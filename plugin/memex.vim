@@ -20,6 +20,7 @@ endif
 import autoload 'memex.vim'
 
 command -bang -nargs=? MemexThreads memex.Threads(<bang>0, <q-args>)
+command MemexThread memex.Thread()
 command MemexReply memex.Reply()
 command MemexDrafts memex.Drafts()
 command MemexPublish memex.Publish()

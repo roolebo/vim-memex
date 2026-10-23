@@ -19,6 +19,10 @@ enddef
 # The working copy of the current file, or of the current directory;
 # warns and returns '' outside one
 def Root(): string
+  # From the quickfix window, the working copy of what it lists
+  if &buftype == 'quickfix' && !empty(shown)
+    return shown.root
+  endif
   var dir = expand('%:p:h')
   if !isdirectory(dir)
     dir = getcwd()
@@ -152,10 +156,17 @@ export def Threads(all: bool, change: string)
   echo 'vim-memex: reading threads...'
 enddef
 
+# The first line of TEXT, cut to WIDTH characters
+def Short(text: string, width: number): string
+  var line = get(split(text, "\n"), 0, '')
+  return strchars(line) <= width ? line
+    : strcharpart(line, 0, width - 1) .. '…'
+enddef
+
 def Summary(thread: dict<any>, current: string): string
   var comments = thread.data.comments
   var first = comments[0]
-  var text = $'{first.author.name}: {split(first.text, "\n")[0]}'
+  var text = $'{first.author.name}: {Short(first.text, 60)}'
   if len(comments) > 1
     text ..= $' (+{len(comments) - 1})'
   endif
@@ -259,6 +270,41 @@ enddef
 # Drafts the reply on stdin; the reply's earlier draft, if any, goes
 const DRAFT = '[ -z "$2" ] || memex discussion discard "$1" "$2"'
   .. ' && memex discussion draft "$1"'
+
+# Shows the whole thread at the cursor, or of the quickfix entry, in a
+# popup that closes when the cursor moves
+export def Thread()
+  var thread = Here()
+  if empty(thread)
+    Warn('no thread here; run :MemexThreads first')
+    return
+  endif
+  var width = min([78, winwidth(0) - 4])
+  var lines = []
+  for c in thread.data.comments
+    if !empty(lines)
+      add(lines, '')
+    endif
+    var head = c.author.name
+    if c.draft == true
+      head ..= ' (draft)'
+    endif
+    add(lines, $'{head}, patch set {c.revision}:')
+    lines += split(c.text, "\n", true)->mapnew((_, l) => $'  {l}')
+  endfor
+  if thread.data.resolved == true
+    lines += ['', '[resolved]']
+  endif
+  popup_atcursor(lines, {
+    maxwidth: width,
+    maxheight: &lines / 2,
+    wrap: true,
+    border: [],
+    padding: [0, 1, 0, 1],
+    moved: 'any',
+    scrollbar: true,
+  })
+enddef
 
 export def Reply()
   var thread = Here()
