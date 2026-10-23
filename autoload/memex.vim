@@ -206,6 +206,10 @@ export def Reply()
     to: thread.data.comments[-1].id, draft: ''}
   var last = thread.data.comments[-1]
   execute $'new memex://reply/{thread.id}'
+  # Open already: keep the draft it saved
+  if exists('b:memex_reply')
+    return
+  endif
   setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
   b:memex_reply = reply
   &l:statusline = $'memex reply to {last.author.name}: '
