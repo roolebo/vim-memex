@@ -525,6 +525,14 @@ test_busy() {
   check entries "$(expr 'len(getqflist())')" 2
 }
 
+# The list shows without :copen, and the cursor stays in the file
+test_list_opens() {
+  editor "$REPO" src/a.c
+  memex ' review'
+  check window "$(expr 'len(filter(getwininfo(), "v:val.quickfix")) > 0')" 1
+  check cursor "$(expr '&buftype')" ''
+}
+
 test_runs_commit() {
   editor "$REPO"
   runs ' HEAD~0'

@@ -192,6 +192,17 @@ enddef
 # its exit status and its output
 highlight default link MemexBusy PmenuSel
 
+# Opens the quickfix window if the list has entries, keeping the cursor
+# where it is
+def ShowList()
+  if empty(getqflist())
+    return
+  endif
+  var win = win_getid()
+  botright copen
+  win_gotoid(win)
+enddef
+
 def Spawn(root: string, argv: list<string>, input: string,
     Done: func(number, string))
   # Raw: a RECORD can be longer than what Vim passes as one line. The
@@ -316,6 +327,7 @@ def List(root: string, title: string, records: list<dict<any>>)
     ->mapnew((_, r) => Item(root, r)
       ->extend({user_data: {root: root, record: r}}))
   setqflist([], ' ', {title: title, items: items, context: {root: root}})
+  ShowList()
   var kinds = records->mapnew((_, r) => r.kind)->sort()->uniq()
   echo $'vim-memex: {len(items)} '
     .. (len(kinds) == 1 ? $'{kinds[0]}s' : 'records')
@@ -471,6 +483,7 @@ def ShowThreads(root: string, title: string, change: dict<any>,
     ->filter((_, t) => all || t.data.resolved != true)
     ->mapnew((_, t) => ThreadItem(root, t, current))
   setqflist([], ' ', {title: title, items: items, context: {root: root}})
+  ShowList()
 
   marks = {}
   for item in items

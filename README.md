@@ -22,6 +22,8 @@ What memex prints shows by the kind of its records:
   entry ends in its URL, for `gx`.
 - output other than records, such as `bindings`: in a read-only buffer.
 
+The quickfix window opens by itself; the cursor stays where it was.
+
 A command that lacks its argument takes it from the record at the
 cursor: the quickfix entry at the cursor in the quickfix window, the
 issue of an issue's buffer, or the thread after the cursor's line. A
