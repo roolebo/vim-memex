@@ -40,11 +40,10 @@ CI results, from the `ci` role:
 
 History and workspaces, from the `discussion` and `code` roles:
 
-    :MemexHistory            every version of a change, newest first: the
-                             revisions uploaded for review, then copies
-                             only in your workspaces or upstream; of the
-                             change of the thread at the cursor, of the
-                             commit of the entry, or of HEAD
+    :MemexHistory            every version of a change, newest first,
+                             uploaded or local, from `memex history`; of
+                             the change of the thread at the cursor, of
+                             the commit of the entry, or of HEAD
     :MemexWorkspaces         working copies of the repository, with what
                              they have checked out
 

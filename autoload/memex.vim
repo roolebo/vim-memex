@@ -554,16 +554,7 @@ enddef
 
 # Lists the versions of the change at the cursor: of the commit or the
 # review thread there, else of HEAD
-# Prints the change RECORD of CHANGE, or of HEAD without it, then the
-# commit RECORDs of its versions in the code, if the code role is bound
-const HISTORY = 'if [ -n "$1" ]; then c=$(memex discussion change "$1");'
-  .. ' else c=$(memex discussion locate "$(git rev-parse HEAD)"); fi'
-  .. ' || exit 1; printf "%s\n" "$c";'
-  .. ' id=$(printf "%s" "$c" | jq -r'
-  .. ' "[.links[] | select(.[0] == \"change-id\") | .[1]][0] // empty");'
-  .. ' [ -z "$id" ] || memex code versions "$id" || [ $? -eq 2 ]'
-
-# Every version of a change, uploaded and local, newest first: the
+# Every version of a change, newest first, from `memex history`: the
 # change of the thread at the cursor, of the commit entry, or of HEAD
 export def History()
   var root = Root()
@@ -580,48 +571,20 @@ export def History()
     Warn('not in a git working copy')
     return
   endif
-  Run(root, HISTORY, [change], '', (status, records) => {
-    if status == 0 && !empty(records)
-      ShowHistory(root, records[0], records[1 :])
-    endif
-  })
-  echo 'vim-memex: reading history...'
-enddef
-
-# Where, besides the review server, a commit is: workspaces and branches
-def Places(commit: dict<any>): string
-  var places = commit.data.where->copy()->filter((_, w) => w != 'server')
-  return empty(places) ? '' : $' [{places->join(", ")}]'
-enddef
-
-def ShowHistory(root: string, change: dict<any>, commits: list<dict<any>>)
-  var local: dict<dict<any>> = {}
-  for commit in commits
-    local[commit.data.commit] = commit
-  endfor
-  var items = []
-  for revision in change.data.revisions->copy()->reverse()
-    var text = $'PS{revision.id} {revision.commit[: 11]} uploaded'
-    if revision.id == change.data.current
-      text ..= ', current'
-    endif
-    if has_key(local, revision.commit)
-      text ..= Places(remove(local, revision.commit))
-    endif
-    add(items, {text: text, user_data: {root: root, record: change}})
-  endfor
-  for commit in commits->copy()->filter((_, c) => has_key(local,
-      c.data.commit))
-    var upstream = commit.data.where->copy()
-      ->filter((_, w) => w =~ '^[^/]\+/')
-    var label = empty(upstream) ? 'local' : 'upstream'
-    add(items, {text: $'{label} {commit.data.commit[: 11]} '
-      .. $'{commit.data.subject}{Places(commit)}',
-      user_data: {root: root, record: commit}})
-  endfor
-  setqflist([], ' ', {title: $'memex history: {change.data.title}',
-    items: items})
-  echo $'vim-memex: {len(items)} versions of change {change.id}'
+  Query(root, 'memex history "$1"', [change], '', 'versions',
+    empty(change) ? 'HEAD' : change, (version) => {
+      var data = version.data
+      var text = (data.revision == null ? 'local' : $'PS{data.revision}')
+        .. $' {data.commit[: 11]}'
+      if data.current
+        text ..= ' current'
+      endif
+      var places = data.where->copy()->filter((_, w) => w != 'server')
+      if !empty(places)
+        text ..= $' [{places->join(", ")}]'
+      endif
+      return {text: text}
+    })
 enddef
 
 export def Workspaces()

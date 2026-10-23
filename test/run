@@ -570,25 +570,20 @@ test_retest_unsupported() {
   check_lacks message "$(messages)" 'asked for'
 }
 
-# Run :MemexHistory and wait for the quickfix list
+# Run :MemexHistory and wait for the list of the change ABOUT
 history() {
   keys :MemexHistory Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex history: Fix the lock'
+  wait_for 'getqflist({"title": 1}).title' "memex versions: $1"
 }
 
-# Uploaded revisions newest first, then local copies; a revision also
-# found locally says where
 test_history_head() {
   editor "$REPO"
-  history
-  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
-    "discussion locate $(git -C "$REPO" rev-parse HEAD)" \
-    'code versions I8a1f')"
+  history HEAD
+  check log "$(cat "$MEMEX_FAKE/log")" 'history '
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
-    ':0:PS2 beef33333333 uploaded, current' \
-    ':0:PS1 aaaa11111111 uploaded' \
-    ':0:local c0ffee111111 Fix the lock [/work/project, topic]')"
-  check_has message "$(bottom_line)" 'vim-memex: 3 versions of change 1234'
+    ':0:local c0ffee111111 [/work/project, topic]' \
+    ':0:PS2 beef33333333 current')"
+  check_has message "$(bottom_line)" 'vim-memex: 2 versions'
 }
 
 # Of the change of the thread at the cursor
@@ -597,19 +592,8 @@ test_history_thread() {
   threads
   keys 2G
   : > "$MEMEX_FAKE/log"
-  history
-  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
-    'discussion change 1234' 'code versions I8a1f')"
-}
-
-# Without the code role, the review's revisions alone
-test_history_no_code() {
-  editor "$REPO"
-  echo versions > "$MEMEX_FAKE/unsupported"
-  history
-  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
-    ':0:PS2 beef33333333 uploaded, current' \
-    ':0:PS1 aaaa11111111 uploaded')"
+  history 1234
+  check log "$(cat "$MEMEX_FAKE/log")" 'history 1234'
 }
 
 test_workspaces() {

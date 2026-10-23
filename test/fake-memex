@@ -101,6 +101,10 @@ if [ "$1" == bindings ]; then
   cat "$DATA/bindings"
   exit 0
 fi
+if [ "$1" == history ]; then
+  jq -c . "$DATA/history.json"
+  exit 0
+fi
 if [ -f "$STATE/fail" ] && grep -qxF "$2" "$STATE/fail"; then
   die "$2 failed"
 fi

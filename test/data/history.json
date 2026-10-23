@@ -1,0 +1,32 @@
+{
+  "id": "c0ffee1111112222",
+  "source": "memex",
+  "role": "history",
+  "kind": "version",
+  "basis": "/work/project,topic",
+  "links": [["change", "1234"], ["commit", "c0ffee1111112222"]],
+  "data": {
+    "revision": null,
+    "commit": "c0ffee1111112222",
+    "uploaded": false,
+    "current": false,
+    "where": ["/work/project", "topic"]
+  },
+  "notes": {}
+}
+{
+  "id": "beef333333334444",
+  "source": "memex",
+  "role": "history",
+  "kind": "version",
+  "basis": "server",
+  "links": [["change", "1234"], ["commit", "beef333333334444"]],
+  "data": {
+    "revision": "2",
+    "commit": "beef333333334444",
+    "uploaded": true,
+    "current": true,
+    "where": ["server"]
+  },
+  "notes": {}
+}
