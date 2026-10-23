@@ -72,10 +72,21 @@ wait_for() {
   done
 }
 
-# Run :MemexThreads ARGS and wait for the quickfix list
+# Run :Memex ARGS and wait for the quickfix list memex WORDS, the ARGS
+# without a bang
+memex() {
+  keys ":Memex$1" Enter
+  title "memex ${1#! }"
+}
+
+# Wait for the quickfix list TITLE
+title() {
+  wait_for 'getqflist({"title": 1}).title' "$1"
+}
+
+# Run :Memex review ARGS and wait for the threads
 threads() {
-  keys ":MemexThreads$1" Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex: Fix the lock'
+  memex " review$1"
 }
 
 # The screen's last line
@@ -89,7 +100,7 @@ messages() {
 
 # The calls of memex, without the ones that read threads
 calls() {
-  grep -Ev '^(review|discussion (locate|change|threads)) ' \
+  grep -Ev '^(review|discussion (locate|change|threads))( |$)' \
     "$MEMEX_FAKE/log" || true
 }
 
@@ -114,7 +125,7 @@ check_lacks() {
 test_threads_head() {
   editor "$REPO"
   threads
-  check log "$(cat "$MEMEX_FAKE/log")" 'review '
+  check log "$(cat "$MEMEX_FAKE/log")" review
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     'src/a.c:2:Jane Reviewer: Leaks the lock. (+1)' \
     'src/a.c:1:[base] Jane Reviewer: Was this needed?' \
@@ -136,7 +147,7 @@ test_threads_change() {
 
 test_threads_resolved() {
   editor "$REPO"
-  threads '!'
+  memex '! review'
   check entries "$(expr 'len(getqflist())')" 8
   check resolved "$(expr 'getqflist()[5].text')" \
     'Jane Reviewer: Typo. [resolved]'
@@ -144,18 +155,18 @@ test_threads_resolved() {
 
 test_threads_not_a_working_copy() {
   editor "$TEST_DIR"
-  keys :MemexThreads Enter
+  keys ':Memex review' Enter
   check_has warning "$(messages)" 'vim-memex: not in a git working copy'
   check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
 }
 
 test_threads_error() {
   editor "$REPO"
-  keys ':MemexThreads 99' Enter
+  keys ':Memex review 99' Enter
   wait_for 'execute("messages") =~ "No change"' 1
   check_has warning "$(messages)" 'vim-memex: No change 99'
   echo threads > "$MEMEX_FAKE/fail"
-  keys :MemexThreads Enter
+  keys ':Memex review' Enter
   wait_for 'execute("messages") =~ "threads failed"' 1
   check_has warning "$(messages)" 'vim-memex: threads failed'
   check quickfix "$(expr 'len(getqflist())')" 0
@@ -189,15 +200,15 @@ test_after_lines_symlink() {
   threads
   check 2 "$(expr 'After("link/src/a.c", 2)')" \
     '  Jane Reviewer: Leaks the lock. (+1)'
-  keys 2G :MemexReply Enter
+  keys 2G ':Memex discussion draft' Enter
   check buffer "$(expr 'bufname()')" memex://reply/t1
 }
 
 # The popup stays open after the command, until q or leaving the line
-test_thread_popup() {
+test_popup() {
   editor "$REPO"
   threads
-  keys :copen Enter :MemexThread Enter
+  keys :copen Enter ':Memex show' Enter
   sleep 0.3
   check open "$(expr 'len(popup_list())')" 1
   check text "$(expr 'getbufline(winbufnr(popup_list()[0]), 1, 2)')" \
@@ -206,15 +217,26 @@ test_thread_popup() {
   check 'open after w' "$(expr 'len(popup_list())')" 1
   keys q
   check 'closed by q' "$(expr 'len(popup_list())')" 0
-  keys :MemexThread Enter j
+  keys ':Memex show' Enter j
   check 'closed by j' "$(expr 'len(popup_list())')" 0
+}
+
+test_popup_map() {
+  editor "$REPO" --cmd 'let g:memex_map = "K"' src/a.c
+  threads
+  keys 2G K
+  check open "$(expr 'len(popup_list())')" 1
+  # Vim takes a while to tell <Esc> from the start of a key code
+  keys Escape
+  wait_for 'len(popup_list())' 0
+  check closed "$(expr 'len(popup_list())')" 0
 }
 
 # The entry at the cursor in the quickfix window, not the current one
 test_reply_from_quickfix() {
   editor "$REPO"
   threads
-  keys :copen Enter 3G ':MemexReply' Enter
+  keys :copen Enter 3G ':Memex discussion draft' Enter
   check buffer "$(expr 'bufname()')" memex://reply/t3
   check status "$(expr '&l:statusline')" \
     'memex reply to Bob Builder: Rename the file.'
@@ -223,7 +245,7 @@ test_reply_from_quickfix() {
 test_reply_from_line() {
   editor "$REPO" src/a.c
   threads
-  keys 2G :MemexReply Enter
+  keys 2G ':Memex discussion draft' Enter
   check buffer "$(expr 'bufname()')" memex://reply/t1
   check status "$(expr '&l:statusline')" \
     'memex reply to Bob Builder: Which path?'
@@ -232,7 +254,7 @@ test_reply_from_line() {
 test_reply_no_thread() {
   editor "$REPO" src/a.c
   threads
-  keys 3G :MemexReply Enter
+  keys 3G ':Memex discussion draft' Enter
   check buffer "$(expr 'bufname()')" src/a.c
   check_has warning "$(messages)" 'vim-memex: no thread here'
 }
@@ -241,9 +263,8 @@ test_reply_no_thread() {
 test_reply_issue() {
   editor "$REPO"
   threads
-  keys ':MemexIssues x' Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex issues: x'
-  keys :copen Enter :MemexReply Enter
+  memex ' tracker search x'
+  keys :copen Enter ':Memex discussion draft' Enter
   check_has warning "$(messages)" 'vim-memex: no thread here'
 }
 
@@ -251,7 +272,7 @@ test_reply_issue() {
 test_reply_write() {
   editor "$REPO" src/a.c
   threads
-  keys 2G :MemexReply Enter i 'The unlock path.' Escape :w Enter
+  keys 2G ':Memex discussion draft' Enter i 'The unlock path.' Escape :w Enter
   wait_for '&modified' 0
   check calls "$(calls)" \
     'discussion draft 1234 {"reply_to":"c2","text":"The unlock path."}'
@@ -268,9 +289,9 @@ test_reply_write() {
 test_reply_twice() {
   editor "$REPO" src/a.c
   threads
-  keys 2G :MemexReply Enter i 'Sure.' Escape :w Enter
+  keys 2G ':Memex discussion draft' Enter i 'Sure.' Escape :w Enter
   wait_for '&modified' 0
-  keys C-w p :MemexReply Enter A ' Done.' Escape :w Enter
+  keys C-w p ':Memex discussion draft' Enter A ' Done.' Escape :w Enter
   wait_for '&modified' 0
   check calls "$(calls)" "$(printf '%s\n' \
     'discussion draft 1234 {"reply_to":"c2","text":"Sure."}' \
@@ -281,7 +302,7 @@ test_reply_twice() {
 test_reply_empty() {
   editor "$REPO" src/a.c
   threads
-  keys 2G :MemexReply Enter :w Enter
+  keys 2G ':Memex discussion draft' Enter :w Enter
   check_has warning "$(messages)" 'vim-memex: empty reply, nothing drafted'
   check calls "$(calls)" ''
 }
@@ -290,7 +311,7 @@ test_reply_error() {
   editor "$REPO" src/a.c
   threads
   echo draft > "$MEMEX_FAKE/fail"
-  keys 2G :MemexReply Enter i 'Sure.' Escape :w Enter
+  keys 2G ':Memex discussion draft' Enter i 'Sure.' Escape :w Enter
   wait_for 'execute("messages") =~ "draft failed"' 1
   check_has warning "$(messages)" 'vim-memex: draft failed'
   check modified "$(expr '&modified')" 1
@@ -299,36 +320,34 @@ test_reply_error() {
 test_drafts() {
   editor "$REPO" src/a.c
   threads
-  keys 2G :MemexReply Enter i 'Sure.' Escape :w Enter
+  keys 2G ':Memex discussion draft' Enter i 'Sure.' Escape :w Enter
   wait_for '&modified' 0
-  keys :MemexDrafts Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex drafts: Fix the lock'
+  memex ' discussion drafts'
   check quickfix "$(expr 'Qf()')" ':0:[change] [draft] Me: Sure.'
-  check_has message "$(bottom_line)" '1 drafts on change 1234'
+  check_has message "$(bottom_line)" '1 threads on change 1234'
 }
 
 test_drafts_before_threads() {
   editor "$REPO"
-  keys :MemexDrafts Enter
-  check_has warning "$(messages)" 'vim-memex: run :MemexThreads first'
+  keys ':Memex discussion drafts' Enter
+  check_has warning "$(messages)" 'vim-memex: no change here'
 }
 
 test_drafts_unsupported() {
   editor "$REPO"
   threads
   echo drafts > "$MEMEX_FAKE/unsupported"
-  keys :MemexDrafts Enter
+  keys ':Memex discussion drafts' Enter
   wait_for 'execute("messages") =~ "not supported"' 1
   check_has warning "$(messages)" \
     'vim-memex: not supported by the bound adapter'
-  check quickfix "$(expr 'getqflist({"title": 1}).title')" \
-    'memex: Fix the lock'
+  check quickfix "$(expr 'getqflist({"title": 1}).title')" 'memex review'
 }
 
 test_publish() {
   editor "$REPO"
   threads
-  keys :MemexPublish Enter
+  keys ':Memex discussion publish' Enter
   keys y
   sleep 0.5
   check calls "$(calls)" 'discussion publish 1234 {}'
@@ -338,9 +357,9 @@ test_publish() {
 test_publish_declined() {
   editor "$REPO"
   threads
-  keys :MemexPublish Enter
+  keys ':Memex discussion publish' Enter
   keys n
-  keys :MemexPublish Enter
+  keys ':Memex discussion publish' Enter
   keys Enter
   check calls "$(calls)" ''
 }
@@ -349,16 +368,16 @@ test_publish_error() {
   editor "$REPO"
   threads
   echo publish > "$MEMEX_FAKE/fail"
-  keys :MemexPublish Enter
+  keys ':Memex discussion publish' Enter
   keys y
   wait_for 'execute("messages") =~ "publish failed"' 1
   check_has warning "$(messages)" 'vim-memex: publish failed'
   check_lacks message "$(messages)" 'published on'
 }
 
-# Run :MemexIssue ARGS and wait for the issue's buffer, ISSUE
+# Run :Memex tracker issue ARGS and wait for the issue's buffer, ISSUE
 issue() {
-  keys ":MemexIssue$1" Enter
+  keys ":Memex tracker issue$1" Enter
   wait_for 'bufname()' "memex://issue/$2"
 }
 
@@ -389,7 +408,7 @@ test_issue() {
 
 test_issue_error() {
   editor "$REPO"
-  keys ':MemexIssue BUG-9' Enter
+  keys ':Memex tracker issue BUG-9' Enter
   wait_for 'execute("messages") =~ "No issue"' 1
   check_has warning "$(messages)" 'vim-memex: No issue BUG-9'
   check buffer "$(expr 'bufname()')" ''
@@ -397,28 +416,27 @@ test_issue_error() {
 
 test_issue_no_entry() {
   editor "$REPO"
-  keys :MemexIssue Enter
+  keys ':Memex tracker issue' Enter
   check_has warning "$(messages)" 'vim-memex: no issue here'
 }
 
 # The query goes on stdin; an entry opens its issue
 test_issues() {
   editor "$REPO"
-  keys ':MemexIssues assignee = me' Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex issues: assignee = me'
+  memex ' tracker search assignee = me'
   check log "$(cat "$MEMEX_FAKE/log")" 'tracker search assignee = me'
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     ':0:BUG-1 Open: Lock leaks on the error path' \
     ':0:BUG-2 Closed: Typo in the manual')"
   check_has message "$(bottom_line)" 'vim-memex: 2 issues'
-  keys :copen Enter 2G :MemexIssue Enter
+  keys :copen Enter 2G ':Memex tracker issue' Enter
   wait_for 'bufname()' memex://issue/BUG-2
   check assignee "$(expr 'getline(4)')" '- assignee: nobody'
 }
 
 test_comment() {
   editor "$REPO"
-  keys ':MemexComment BUG-1' Enter
+  keys ':Memex tracker comment BUG-1' Enter
   check buffer "$(expr 'bufname()')" memex://comment/BUG-1
   keys i 'Fixed in 1234.' Escape :w Enter
   keys y
@@ -427,9 +445,17 @@ test_comment() {
   check_has message "$(bottom_line)" 'comment sent to issue BUG-1'
 }
 
+# On the issue of the buffer
+test_comment_issue() {
+  editor "$REPO"
+  issue ' BUG-1' BUG-1
+  keys ':Memex tracker comment' Enter
+  check buffer "$(expr 'bufname()')" memex://comment/BUG-1
+}
+
 test_comment_declined() {
   editor "$REPO"
-  keys ':MemexComment BUG-1' Enter i 'Fixed.' Escape :w Enter
+  keys ':Memex tracker comment BUG-1' Enter i 'Fixed.' Escape :w Enter
   keys n
   check modified "$(expr '&modified')" 1
   keys :w Enter
@@ -439,14 +465,14 @@ test_comment_declined() {
 
 test_comment_empty() {
   editor "$REPO"
-  keys ':MemexComment BUG-1' Enter :w Enter
+  keys ':Memex tracker comment BUG-1' Enter :w Enter
   check_has warning "$(messages)" 'vim-memex: empty comment, nothing sent'
   check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
 }
 
 test_comment_error() {
   editor "$REPO"
-  keys ':MemexComment BUG-9' Enter i 'Fixed.' Escape :w Enter
+  keys ':Memex tracker comment BUG-9' Enter i 'Fixed.' Escape :w Enter
   keys y
   wait_for 'execute("messages") =~ "No issue"' 1
   check_has warning "$(messages)" 'vim-memex: No issue BUG-9'
@@ -455,7 +481,7 @@ test_comment_error() {
 
 test_transition() {
   editor "$REPO"
-  keys ':MemexTransition BUG-1 In Progress' Enter
+  keys ':Memex tracker transition BUG-1 In Progress' Enter
   keys y
   wait_for 'execute("messages") =~ "moved to"' 1
   check log "$(cat "$MEMEX_FAKE/log")" 'tracker transition BUG-1 In Progress'
@@ -464,24 +490,23 @@ test_transition() {
 
 test_transition_declined() {
   editor "$REPO"
-  keys ':MemexTransition BUG-1 Closed' Enter
+  keys ':Memex tracker transition BUG-1 Closed' Enter
   keys n
-  keys ':MemexTransition BUG-1' Enter
-  check_has warning "$(messages)" 'vim-memex: give the status'
+  keys ':Memex tracker transition BUG-1' Enter
+  check_has warning "$(messages)" \
+    'vim-memex: give the issue and the status'
   check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
 }
 
-# Run :MemexRuns ARGS and wait for the quickfix list
+# Run :Memex ci runs ARGS and wait for the quickfix list
 runs() {
-  local commit=${1# }
-  keys ":MemexRuns$1" Enter
-  wait_for 'getqflist({"title": 1}).title' "memex runs: ${commit:-HEAD}"
+  memex " ci runs$1"
 }
 
 test_runs() {
   editor "$REPO"
   runs
-  check log "$(cat "$MEMEX_FAKE/log")" 'ci runs HEAD'
+  check log "$(cat "$MEMEX_FAKE/log")" 'ci runs'
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     ':0:fail x86_64/el9 2026-10-20T15:00:00Z' ':0:running build')"
   check_has message "$(bottom_line)" 'vim-memex: 2 runs'
@@ -491,7 +516,7 @@ test_runs_commit() {
   editor "$REPO"
   runs ' HEAD~0'
   check log "$(cat "$MEMEX_FAKE/log")" 'ci runs HEAD~0'
-  keys ':MemexRuns nothing' Enter
+  keys ':Memex ci runs nothing' Enter
   wait_for 'execute("messages") =~ "No runs of"' 1
   check_has warning "$(messages)" 'No runs of nothing'
 }
@@ -500,20 +525,20 @@ test_runs_commit() {
 test_suites() {
   editor "$REPO"
   runs
-  keys :copen Enter :MemexSuites Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r1'
+  keys :copen Enter
+  memex ' ci suites'
+  check log "$(tail -1 "$MEMEX_FAKE/log")" 'ci suites r1'
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     ':0:fail sanity (2 fail, 412 pass, 9 skip)' ':0:pass build')"
-  keys :colder Enter 2G :MemexSuites Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r2'
+  keys :colder Enter 2G ':Memex ci suites' Enter
+  title 'memex ci suites r2'
   check quickfix "$(expr 'Qf()')" ''
 }
 
 test_suites_no_run() {
   editor "$REPO"
-  keys ':MemexIssues x' Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex issues: x'
-  keys :MemexSuites Enter
+  memex ' tracker search x'
+  keys ':Memex ci suites' Enter
   check_has warning "$(messages)" 'vim-memex: no run here'
 }
 
@@ -521,10 +546,10 @@ test_suites_no_run() {
 test_tests() {
   editor "$REPO"
   runs
-  keys :MemexSuites Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r1'
-  keys :MemexTests Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex tests: sanity'
+  keys ':Memex ci suites' Enter
+  title 'memex ci suites r1'
+  keys ':Memex ci tests' Enter
+  title 'memex ci tests s1'
   check log "$(grep -v '^ci runs' "$MEMEX_FAKE/log")" \
     "$(printf '%s\n' 'ci suites r1' 'ci tests s1')"
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
@@ -535,16 +560,16 @@ test_tests() {
 test_logs() {
   editor "$REPO"
   runs
-  keys :MemexLogs Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex logs: run r1'
+  keys ':Memex ci logs' Enter
+  title 'memex ci logs r1'
   check quickfix "$(expr 'Qf()')" \
     ':0:console.log: https://ci.example.org/runs/r1/console.log'
-  keys :colder Enter :MemexSuites Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r1'
-  keys :MemexTests Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex tests: sanity'
-  keys :MemexLogs Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex logs: test test_51b'
+  keys :colder Enter ':Memex ci suites' Enter
+  title 'memex ci suites r1'
+  keys ':Memex ci tests' Enter
+  title 'memex ci tests s1'
+  keys ':Memex ci logs' Enter
+  title 'memex ci logs t11'
   check quickfix "$(expr 'Qf()')" \
     ':0:test_51b.log: https://ci.example.org/tests/t11/test_51b.log'
 }
@@ -552,7 +577,7 @@ test_logs() {
 test_retest() {
   editor "$REPO"
   runs
-  keys :MemexRetest Enter 'flaky node' Enter
+  keys ':Memex ci retest' Enter 'flaky node' Enter
   keys y
   wait_for 'execute("messages") =~ "retest of run"' 1
   check log "$(grep -v '^ci runs' "$MEMEX_FAKE/log")" \
@@ -563,9 +588,9 @@ test_retest() {
 test_retest_declined() {
   editor "$REPO"
   runs
-  keys :MemexRetest Enter 'flaky node' Enter
+  keys ':Memex ci retest' Enter 'flaky node' Enter
   keys n
-  keys :MemexRetest Enter Enter
+  keys ':Memex ci retest' Enter Enter
   check_has warning "$(messages)" 'vim-memex: no reason given'
   check log "$(grep -v '^ci runs' "$MEMEX_FAKE/log")" ''
 }
@@ -574,7 +599,7 @@ test_retest_unsupported() {
   editor "$REPO"
   runs
   echo retest > "$MEMEX_FAKE/unsupported"
-  keys :MemexRetest Enter 'flaky node' Enter
+  keys ':Memex ci retest' Enter 'flaky node' Enter
   keys y
   wait_for 'execute("messages") =~ "not supported"' 1
   check_has warning "$(messages)" \
@@ -582,16 +607,16 @@ test_retest_unsupported() {
   check_lacks message "$(messages)" 'asked for'
 }
 
-# Run :MemexHistory and wait for the list of the change ABOUT
+# Run :Memex history and wait for the list memex history ARGS
 history() {
-  keys :MemexHistory Enter
-  wait_for 'getqflist({"title": 1}).title' "memex versions: $1"
+  keys ':Memex history' Enter
+  title "memex history$1"
 }
 
 test_history_head() {
   editor "$REPO"
-  history HEAD
-  check log "$(cat "$MEMEX_FAKE/log")" 'history '
+  history
+  check log "$(cat "$MEMEX_FAKE/log")" history
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     ':0:local c0ffee111111 [/work/project, topic]' \
     ':0:PS2 beef33333333 current')"
@@ -604,14 +629,13 @@ test_history_thread() {
   threads
   keys 2G
   : > "$MEMEX_FAKE/log"
-  history 1234
+  history ' 1234'
   check log "$(cat "$MEMEX_FAKE/log")" 'history 1234'
 }
 
 test_workspaces() {
   editor "$REPO"
-  keys :MemexWorkspaces Enter
-  wait_for 'getqflist({"title": 1}).title' "memex workspaces: $REPO"
+  memex ' code workspaces'
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     '/work/project:0:topic c0ffee111111 [changed]' \
     '/work/project-old:0:(detached) beef33333333')"
@@ -619,10 +643,45 @@ test_workspaces() {
 
 test_bindings() {
   editor "$REPO"
-  keys :MemexBindings Enter
+  keys ':Memex bindings' Enter
   wait_for 'bufname()' memex://bindings
   check buffer "$(lines)" "$(cat "$CURDIR/data/bindings")"
   check modifiable "$(expr '&modifiable')" 0
+}
+
+# Kinds without a rendering of their own get a summary
+test_other_kinds() {
+  editor "$REPO"
+  memex ' discussion change 1234'
+  check quickfix "$(expr 'Qf()')" ':0:change 1234: Fix the lock'
+  check_has message "$(bottom_line)" 'vim-memex: 1 changes'
+  memex ' code versions I8a1f'
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    ':0:c0ffee111111 Fix the lock' ':0:beef33333333 Fix the lock')"
+}
+
+test_discard() {
+  editor "$REPO" src/a.c
+  threads
+  keys 2G ':Memex discussion draft' Enter i 'Sure.' Escape :w Enter
+  wait_for '&modified' 0
+  keys ':Memex discussion discard 1234 d1' Enter
+  keys n
+  keys ':Memex discussion discard 1234 d1' Enter
+  keys y
+  wait_for 'execute("messages") =~ "done: memex"' 1
+  check calls "$(calls)" "$(printf '%s\n' \
+    'discussion draft 1234 {"reply_to":"c2","text":"Sure."}' \
+    'discussion discard 1234 d1')"
+}
+
+test_complete() {
+  editor "$REPO"
+  check commands "$(expr 'getcompletion("Memex ", "cmdline")')" \
+    "$(printf '%s\n' bindings ci code discussion history review show tracker)"
+  check ci "$(expr 'getcompletion("Memex! ci r", "cmdline")')" \
+    "$(printf '%s\n' retest run runs)"
+  check args "$(expr 'getcompletion("Memex ci runs ", "cmdline")')" ''
 }
 
 # A repository with the files the threads are about

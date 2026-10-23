@@ -3,53 +3,50 @@
 What [memex] has about your working copy, in Vim: review threads of a
 change, issues, CI results and the history of a change.
 
-Results go to the quickfix list. Commands that act on a result take the
-quickfix entry at the cursor in the quickfix window, else the current
-one.
+## Usage
 
-Review threads, from the `discussion` role:
+    :Memex[!] ARGS
 
-    :MemexThreads [CHANGE]   open threads of CHANGE, or of HEAD's change,
-                             in the quickfix list and after their lines
-    :MemexThreads! [CHANGE]  resolved ones too
-    :MemexReply              reply to the thread at the cursor or quickfix
-                             entry; :write saves it as a draft
-    :MemexDrafts             your drafts in the quickfix list
-    :MemexPublish            publish your drafts, after asking
+Runs `memex ARGS` in the background, in the working copy of the current
+file; `memex --help` lists what ARGS can be. `<Tab>` completes memex's
+commands and roles. `tracker search QUERY` sends QUERY on stdin, as
+memex wants it.
 
-Issues, from the `tracker` role:
+What memex prints shows by the kind of its records:
 
-    :MemexIssue [ISSUE]      show ISSUE, or the issue of the entry
-    :MemexIssues QUERY       issues matching QUERY, in the tracker's own
-                             search language
-    :MemexComment ISSUE      write a comment on ISSUE; :write sends it,
-                             after asking
-    :MemexTransition ISSUE STATUS
-                             move ISSUE to STATUS, after asking
+- thread: in the quickfix list and after the line it is about, cut to
+  its first line. Resolved threads only with `!`.
+- issue: a single one in the read-only buffer `memex://issue/ID`,
+  several in the quickfix list.
+- any other kind: in the quickfix list, an entry per record. A log's
+  entry ends in its URL, for `gx`.
+- output other than records, such as `bindings`: in a read-only buffer.
 
-CI results, from the `ci` role:
+A command that lacks its argument takes it from the record at the
+cursor: the quickfix entry at the cursor in the quickfix window, the
+issue of an issue's buffer, or the thread after the cursor's line. A
+run, suite, test or issue may also be the current quickfix entry.
+`history` and `discussion` commands take the change of that record;
+without one, `history` takes HEAD's change and `discussion` commands the
+change shown last. For example, `:Memex ci suites` on a run lists its
+suites.
 
-    :MemexRuns [COMMIT]      runs that tested COMMIT, or HEAD
-    :MemexSuites             suites of the run of the entry
-    :MemexTests              tests of the suite of the entry, failures
-                             first
-    :MemexLogs               logs of the run, suite or test of the entry,
-                             by URL: gx on it opens it
-    :MemexRetest             run the run of the entry again, after asking
-                             why
+Commands that write:
 
-History and workspaces, from the `discussion` and `code` roles:
+- `discussion draft` opens a reply to the thread at the cursor,
+  `memex://reply/ID`. `:write` saves it as a draft; a later `:write`
+  replaces that draft.
+- `tracker comment [ISSUE]` opens a comment on the issue. `:write` sends
+  it, after asking.
+- `discussion publish`, `discussion discard`, `tracker transition ISSUE
+  STATUS` and `ci retest` ask before they run; `ci retest` also asks
+  why.
 
-    :MemexHistory            every version of a change, newest first,
-                             uploaded or local, from `memex history`; of
-                             the change of the thread at the cursor, of
-                             the commit of the entry, or of HEAD
-    :MemexWorkspaces         working copies of the repository, with what
-                             they have checked out
+`:Memex show` shows the whole thread at the cursor in a popup. It closes
+when the cursor leaves the line, or on `<Esc>` or `q`. The mapping
+`<Plug>(memex-show)` does the same; to map a key to it:
 
-Bindings:
-
-    :MemexBindings           which adapter each role is bound to
+    let g:memex_map = 'K'
 
 Needs `memex` with the roles you use bound, and `jq`. When the bound
 adapter lacks a command, the command says so.

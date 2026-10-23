@@ -5,15 +5,20 @@
 - If discarding the old draft works and drafting the new one fails, the
   reply keeps the discarded id and every later `:write` fails.
 
-- Empty comment text breaks the summary and the reply's status line.
+- `:Memex discussion draft` on a draft replies to the draft instead of
+  editing it.
 
-- `:MemexReply` on a `:MemexDrafts` entry says "no thread here".
+- `:Memex discussion drafts` shows only the drafts after lines; the
+  other threads go until the next `:Memex review`.
 
-- `:MemexRetest` with several `ci` bindings: memex gives stdin only to a
-  single adapter, so the reason doesn't reach them.
+- `:Memex ci retest` with several `ci` bindings: memex gives stdin only
+  to a single adapter, so the reason doesn't reach them.
 
 - A sent comment stays in its buffer: writing it again sends it again,
   after asking.
 
-- `:MemexTests` lists every test; a suite of thousands buries the few
-  failures under passes.
+- `:Memex ci tests` lists every test; a suite of thousands buries the
+  few failures under passes.
+
+- Completion lists memex's commands as the plugin knows them; a command
+  memex gains completes only once added there.

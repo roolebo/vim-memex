@@ -19,27 +19,13 @@ endif
 
 import autoload 'memex.vim'
 
-command -bang -nargs=? MemexThreads memex.Threads(<bang>0, <q-args>)
-command MemexThread memex.Thread()
-command MemexReply memex.Reply()
-command MemexDrafts memex.Drafts()
-command MemexPublish memex.Publish()
+command -bang -nargs=+ -complete=customlist,memex#Complete Memex
+  \ memex.Memex(<bang>0, <f-args>)
 
-command -nargs=? MemexIssue memex.Issue(<q-args>)
-command -nargs=1 MemexIssues memex.Issues(<q-args>)
-command -nargs=1 MemexComment memex.Comment(<q-args>)
-command -nargs=+ MemexTransition memex.Transition(<f-args>)
-
-command -nargs=? MemexRuns memex.Runs(<q-args>)
-command MemexSuites memex.Suites()
-command MemexTests memex.Tests()
-command MemexLogs memex.Logs()
-command MemexRetest memex.Retest()
-
-command MemexHistory memex.History()
-command MemexWorkspaces memex.Workspaces()
-
-command MemexBindings memex.Bindings()
+nnoremap <Plug>(memex-show) <ScriptCmd>memex.Popup()<CR>
+if exists('g:memex_map')
+  execute $'nmap {g:memex_map} <Plug>(memex-show)'
+endif
 
 augroup memex
   autocmd!

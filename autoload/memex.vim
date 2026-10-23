@@ -1,14 +1,48 @@
 vim9script
-# What memex has about a working copy, in the quickfix list and in
-# buffers of their own. Review threads of a change also go after the
-# lines they are about, and get replies as drafts.
+# :Memex runs memex and shows its RECORDs by their kind: in the quickfix
+# list, in buffers of their own, and review threads also after the lines
+# they are about. Commands that write ask first.
 
 const PROP = 'memex_thread'
 
-# The change shown last, its working copy and its threads by id
+# The change shown last, {} if unknown, its working copy and its threads
+# by id
 var shown: dict<any> = {}
 # Text and thread id shown after a line, by file and line
 var marks: dict<dict<dict<string>>> = {}
+
+# What :Memex completes: memex's commands and roles, then each role's
+# commands, as its specification lists them
+const COMMANDS = {
+  '': ['bindings', 'ci', 'code', 'discussion', 'history', 'review', 'show',
+    'tracker'],
+  discussion: ['capabilities', 'change', 'discard', 'draft', 'drafts',
+    'locate', 'publish', 'series', 'threads'],
+  tracker: ['capabilities', 'comment', 'issue', 'search', 'transition'],
+  ci: ['capabilities', 'logs', 'retest', 'run', 'runs', 'suites', 'tests'],
+  code: ['base', 'capabilities', 'commits', 'compare', 'diff', 'fetch',
+    'versions', 'workspaces'],
+}
+
+# What a command takes from the cursor when its argument is missing: the
+# change of the RECORD there, or the id of a RECORD of these kinds
+const MISSING = {
+  history: 'change',
+  'discussion change': 'change',
+  'discussion series': 'change',
+  'discussion threads': 'change',
+  'discussion drafts': 'change',
+  'discussion publish': 'change',
+  'ci run': 'run',
+  'ci suites': 'run',
+  'ci retest': 'run',
+  'ci tests': 'suite',
+  'ci logs': 'run suite test',
+  'tracker issue': 'issue',
+  'tracker comment': 'issue',
+}
+
+const FAILED = ['fail', 'timeout', 'error']
 
 def Warn(message: string)
   echohl WarningMsg
@@ -16,12 +50,57 @@ def Warn(message: string)
   echohl None
 enddef
 
-# The working copy of the current file, or of the current directory;
-# warns and returns '' outside one
+export def Complete(lead: string, line: string, pos: number): list<string>
+  # The words before the one completed, without the command's name
+  var words = split(strpart(line, 0, pos))[1 :]
+  if !empty(lead)
+    words = words[: -2]
+  endif
+  var key = empty(words) ? '' : len(words) == 1 ? words[0] : '-'
+  return get(COMMANDS, key, [])->copy()
+    ->filter((_, c) => stridx(c, lead) == 0)
+enddef
+
+# Runs memex WORDS; takes a missing argument from the cursor, and shows
+# what memex prints. ALL: resolved threads too.
+export def Memex(all: bool, ...words: list<string>)
+  var name = join(words[: 1])
+  if words[0] == 'show'
+    Popup()
+  elseif name == 'discussion draft'
+    Reply()
+  elseif name == 'discussion publish'
+    Publish(words)
+  elseif name == 'discussion discard'
+    Discard(words)
+  elseif name == 'tracker comment'
+    Comment(words)
+  elseif name == 'tracker transition'
+    Transition(words)
+  elseif name == 'tracker search'
+    Search(words)
+  elseif name == 'ci retest'
+    Retest(words)
+  else
+    var target = Target(words)
+    if !empty(target)
+      Query(target.root, target.words, '', join(target.words), all)
+    endif
+  endif
+enddef
+
+# The working copy of the buffer, of the quickfix list in its window, of
+# the current file, or of the current directory; warns and returns ''
+# outside one
 def Root(): string
-  # From the quickfix window, the working copy of what it lists
-  if &buftype == 'quickfix' && !empty(shown)
-    return shown.root
+  if exists('b:memex_root')
+    return b:memex_root
+  endif
+  if &buftype == 'quickfix'
+    var context = getqflist({context: 0}).context
+    if type(context) == v:t_dict
+      return context.root
+    endif
   endif
   var dir = expand('%:p:h')
   if !isdirectory(dir)
@@ -36,17 +115,82 @@ def Root(): string
   return root
 enddef
 
-# Runs a shell SCRIPT with ARGS in ROOT, writes INPUT to it, and calls
-# Done with its exit status and its output RECORDs
-def Run(root: string, script: string, args: list<string>, input: string,
-    Done: func(number, list<dict<any>>))
-  Spawn(root, script, args, input, (status, out) => {
-    Done(status, split(out, "\n")->mapnew((_, l) => json_decode(l)))
-  })
+# The RECORD at the cursor and its working copy, {root: ROOT, record:
+# RECORD}, or {}: the quickfix entry at the cursor in its window, the
+# buffer's RECORD, or the thread after the cursor's line
+def Under(): dict<any>
+  if &buftype == 'quickfix'
+    return EntryData(line('.'))
+  endif
+  if exists('b:memex_record')
+    return {root: b:memex_root, record: b:memex_record}
+  endif
+  var mark = get(get(marks, expand('%:p'), {}), string(line('.')), {})
+  return empty(mark) ? {}
+    : {root: shown.root, record: shown.threads[mark.id]}
 enddef
 
-# Runs SCRIPT as Run does, and calls Done with its output as text
-def Spawn(root: string, script: string, args: list<string>, input: string,
+# What the quickfix entry IDX keeps, as List and ShowThreads keep it, or {}
+def EntryData(idx: number): dict<any>
+  var data = get(get(getqflist(), idx - 1, {}), 'user_data', '')
+  return type(data) == v:t_dict ? data : {}
+enddef
+
+# As Under, if its RECORD is of one of KINDS; else, outside the quickfix
+# window, the current entry's, if of one of KINDS; else {}
+def At(kinds: list<string>): dict<any>
+  var Fits = (here) => !empty(here) && index(kinds, here.record.kind) >= 0
+  var here = Under()
+  if !Fits(here) && &buftype != 'quickfix'
+    here = EntryData(getqflist({idx: 0}).idx)
+  endif
+  return Fits(here) ? here : {}
+enddef
+
+# The value of RECORD's first link of type TYPE, or ''
+def Link(record: dict<any>, type: string): string
+  var links = record.links->copy()->filter((_, l) => l[0] == type)
+  return empty(links) ? '' : links[0][1]
+enddef
+
+# Where to run memex WORDS, and WORDS with their missing argument from
+# the cursor, as MISSING says: {root: ROOT, words: WORDS}; or {} after a
+# warning
+def Target(words: list<string>): dict<any>
+  var name = words[0] == 'history' ? 'history' : join(words[: 1])
+  if len(words) > len(split(name)) || !has_key(MISSING, name)
+    var root = Root()
+    return empty(root) ? {} : {root: root, words: words}
+  endif
+  if MISSING[name] != 'change'
+    var kinds = split(MISSING[name])
+    var here = At(kinds)
+    if empty(here)
+      Warn($'no {join(kinds, " or ")} here; give its id')
+      return {}
+    endif
+    return {root: here.root, words: words + [here.record.id]}
+  endif
+  var here = Under()
+  var change = empty(here) ? '' : Link(here.record, 'change')
+  if !empty(change)
+    return {root: here.root, words: words + [change]}
+  endif
+  # memex's own default: HEAD's change
+  if name == 'history'
+    var root = Root()
+    return empty(root) ? {} : {root: root, words: words}
+  endif
+  if empty(get(shown, 'change', {}))
+    Warn('no change here; give one or run :Memex review')
+    return {}
+  endif
+  return {root: shown.root, words: words + [shown.change.id]}
+enddef
+
+# Runs the command ARGV in ROOT, writes INPUT to it, and calls Done with
+# its exit status and its output
+def Spawn(root: string, argv: list<string>, input: string,
     Done: func(number, string))
   # Raw: a RECORD can be longer than what Vim passes as one line. The
   # job may exit before its output is read, so wait for both.
@@ -64,7 +208,7 @@ def Spawn(root: string, script: string, args: list<string>, input: string,
     endif
     Done(job.status, job.out)
   }
-  var j = job_start(['sh', '-c', script, 'sh'] + args, {
+  var j = job_start(argv, {
     cwd: root,
     in_mode: 'raw',
     out_mode: 'raw',
@@ -91,42 +235,152 @@ def Spawn(root: string, script: string, args: list<string>, input: string,
   ch_close_in(channel)
 enddef
 
-# Lists RECORDs in a new quickfix list of NOUN about ABOUT, an entry each
-# from ToEntry. Each entry keeps its RECORD and ROOT, the working copy it
-# came from, for the commands that act on it.
-def List(root: string, noun: string, about: string,
-    records: list<dict<any>>, ToEntry: func(dict<any>): dict<any>)
-  var items = records->mapnew((_, r) => ToEntry(r)
-    ->extend({user_data: {root: root, record: r}}))
-  setqflist([], ' ', {title: $'memex {noun}: {about}', items: items})
-  echo $'vim-memex: {len(items)} {noun}'
-enddef
-
-# Runs SCRIPT as Run does and lists its RECORDs as List does
-def Query(root: string, script: string, args: list<string>, input: string,
-    noun: string, about: string, ToEntry: func(dict<any>): dict<any>)
-  Run(root, script, args, input, (status, records) => {
+# Runs memex WORDS in ROOT with INPUT and shows its output as memex
+# TITLE; ALL: resolved threads too
+def Query(root: string, words: list<string>, input: string, title: string,
+    all: bool)
+  Spawn(root, ['memex'] + words, input, (status, out) => {
     if status == 0
-      List(root, noun, about, records, ToEntry)
+      Render(root, $'memex {title}', out, all)
     endif
   })
-  echo $'vim-memex: reading {noun}...'
+  echo $'vim-memex: memex {title}...'
 enddef
 
-# The quickfix entry's RECORD and working copy, as List keeps them, if
-# the RECORD is of one of KINDS; else {}. The entry is the one at the
-# cursor in the quickfix window, else the current one.
-def Entry(kinds: list<string>): dict<any>
-  var idx = &buftype == 'quickfix' ? line('.') : getqflist({idx: 0}).idx
-  var data = get(get(getqflist(), idx - 1, {}), 'user_data', '')
-  if type(data) != v:t_dict || index(kinds, data.record.kind) < 0
-    return {}
+# Asks QUESTION, then runs memex WORDS in ROOT with INPUT and calls Done
+# if it succeeds
+def Write(root: string, words: list<string>, input: string,
+    question: string, Done: func())
+  if confirm(question, "&Yes\n&No", 2) != 1
+    return
   endif
-  return data
+  Spawn(root, ['memex'] + words, input, (status, _) => {
+    if status == 0
+      Done()
+    endif
+  })
 enddef
 
-# Shows LINES in the read-only buffer NAME, in its window or a new one
-def Scratch(name: string, lines: list<string>)
+# The RECORD a line of output holds, or {}
+def Record(line: string): dict<any>
+  try
+    var record = json_decode(line)
+    return type(record) == v:t_dict && has_key(record, 'kind') ? record : {}
+  catch
+    return {}
+  endtry
+enddef
+
+# Shows OUT, memex's output in ROOT, under TITLE: threads after their
+# lines and in the quickfix list, a single issue in its buffer, other
+# RECORDs in the quickfix list, and output other than RECORDs in a buffer
+def Render(root: string, title: string, out: string, all: bool)
+  var lines = split(out, "\n")
+  var records = lines->mapnew((_, l) => Record(l))
+  if index(records, {}) >= 0
+    Scratch(root, $'memex://{split(title)[1 :]->join("/")}', lines)
+    return
+  endif
+  var threads = records->copy()->filter((_, r) => r.kind == 'thread')
+  if !empty(threads)
+    var change = records->copy()->filter((_, r) => r.kind == 'change')
+      ->get(0, {})
+    # Drafts come without their change
+    var last = get(shown, 'change', {})
+    if empty(change) && !empty(last)
+        && last.id == Link(threads[0], 'change')
+      change = last
+    endif
+    ShowThreads(root, title, change, threads, all)
+  elseif len(records) == 1 && records[0].kind == 'issue'
+    ShowIssue(root, records[0])
+  else
+    List(root, title, records)
+  endif
+enddef
+
+# Lists RECORDs of ROOT in a new quickfix list TITLE, failed tests first.
+# Each entry keeps its RECORD and ROOT for the commands that act on it.
+def List(root: string, title: string, records: list<dict<any>>)
+  # sort() keeps the order within each
+  var Passed = (r) => r.kind == 'test' && index(FAILED, r.data.result) < 0
+    ? 1 : 0
+  var items = records->copy()->sort((a, b) => Passed(a) - Passed(b))
+    ->mapnew((_, r) => Item(root, r)
+      ->extend({user_data: {root: root, record: r}}))
+  setqflist([], ' ', {title: title, items: items, context: {root: root}})
+  var kinds = records->mapnew((_, r) => r.kind)->sort()->uniq()
+  echo $'vim-memex: {len(items)} '
+    .. (len(kinds) == 1 ? $'{kinds[0]}s' : 'records')
+enddef
+
+# The first line of TEXT, cut to WIDTH characters
+def Short(text: string, width: number): string
+  var line = get(split(text, "\n"), 0, '')
+  return strchars(line) <= width ? line
+    : strcharpart(line, 0, width - 1) .. '…'
+enddef
+
+# The quickfix entry of RECORD, from ROOT
+def Item(root: string, record: dict<any>): dict<any>
+  var data = record.data
+  if record.kind == 'run'
+    var config = data.config
+    var words = [data.result ?? data.status,
+      keys(config)->sort()->mapnew((_, k) => config[k])->join('/'),
+      data.started ?? '']
+    return {text: words->filter((_, w) => !empty(w))->join(' ')}
+  elseif record.kind == 'suite'
+    var counts = data.counts
+    var text = $'{data.result} {data.name}'
+    if !empty(counts)
+      text ..= ' (' .. keys(counts)->sort()
+        ->mapnew((_, r) => $'{counts[r]} {r}')->join(', ') .. ')'
+    endif
+    return {text: text}
+  elseif record.kind == 'test'
+    var text = $'{data.result} {data.name}'
+    if !empty(data.error)
+      text ..= $': {Short(data.error, 60)}'
+    endif
+    return {text: text}
+  elseif record.kind == 'log'
+    # The URL as the text, for gx to open
+    return {text: $'{data.name}: {data.url}'}
+  elseif record.kind == 'issue'
+    return {text: $'{record.id} {data.status}: {Short(data.title, 60)}'}
+  elseif record.kind == 'version'
+    var text = (data.revision == null ? 'local' : $'PS{data.revision}')
+      .. $' {data.commit[: 11]}'
+    if data.current
+      text ..= ' current'
+    endif
+    var places = data.where->copy()->filter((_, w) => w != 'server')
+    if !empty(places)
+      text ..= $' [{places->join(", ")}]'
+    endif
+    return {text: text}
+  elseif record.kind == 'workspace'
+    var text = $'{data.branch ?? "(detached)"} {data.head[: 11]}'
+    if data.changed == true
+      text ..= ' [changed]'
+    endif
+    return {filename: data.path, text: text}
+  elseif record.kind == 'commit'
+    return {text: $'{data.commit[: 11]} {Short(data.subject, 60)}'}
+  elseif record.kind == 'file'
+    return {filename: $'{root}/{data.path}', lnum: 1, text: data.status}
+  endif
+  var about = ['title', 'subject', 'name', 'status']
+    ->mapnew((_, k) => get(data, k, null))
+    ->filter((_, v) => type(v) == v:t_string && !empty(v))
+  return {text: $'{record.kind} {record.id}'
+    .. (empty(about) ? '' : $': {Short(about[0], 60)}')}
+enddef
+
+# Shows LINES in the read-only buffer NAME of ROOT, in its window or a
+# new one
+def Scratch(root: string, name: string, lines: list<string>)
   var win = bufwinid(name)
   if win > 0
     win_gotoid(win)
@@ -137,30 +391,23 @@ def Scratch(name: string, lines: list<string>)
   silent :%delete _
   setline(1, lines)
   setlocal nomodifiable
+  b:memex_root = root
 enddef
 
-# Prints the change RECORD of CHANGE, or of HEAD without it, then its
-# thread RECORDs
-const THREADS = 'memex review "$1"'
-
-export def Threads(all: bool, change: string)
-  var root = Root()
-  if empty(root)
-    return
-  endif
-  Run(root, THREADS, [change], '', (status, records) => {
-    if status == 0
-      Show(root, records[0], records[1 :], all)
-    endif
-  })
-  echo 'vim-memex: reading threads...'
-enddef
-
-# The first line of TEXT, cut to WIDTH characters
-def Short(text: string, width: number): string
-  var line = get(split(text, "\n"), 0, '')
-  return strchars(line) <= width ? line
-    : strcharpart(line, 0, width - 1) .. '…'
+def ShowIssue(root: string, issue: dict<any>)
+  var data = issue.data
+  var lines = [$'# {issue.id}: {data.title}', '',
+    $'- status: {data.status}',
+    $'- assignee: {(data.assignee ?? {name: "nobody"}).name}',
+    $'- url: {data.url}', '']
+    + split(trim(data.text, "\n"), "\n", true)
+  for comment in data.comments
+    lines += ['', $'## {comment.author.name}, {comment.created}', '']
+      + split(trim(comment.text, "\n"), "\n", true)
+  endfor
+  Scratch(root, $'memex://issue/{issue.id}', lines)
+  setlocal filetype=markdown
+  b:memex_record = issue
 enddef
 
 def Summary(thread: dict<any>, current: string): string
@@ -173,7 +420,7 @@ def Summary(thread: dict<any>, current: string): string
   if thread.data.resolved == true
     text ..= ' [resolved]'
   endif
-  if thread.data.revision != current
+  if !empty(current) && thread.data.revision != current
     text ..= $' [patch set {thread.data.revision}]'
   endif
   if comments[-1].draft == true
@@ -182,9 +429,10 @@ def Summary(thread: dict<any>, current: string): string
   return text
 enddef
 
-def Item(root: string, thread: dict<any>, current: string): dict<any>
+def ThreadItem(root: string, thread: dict<any>, current: string): dict<any>
   var anchor = thread.data.anchor
-  var item = {text: Summary(thread, current), user_data: thread.id}
+  var item = {text: Summary(thread, current),
+    user_data: {root: root, record: thread}}
   if anchor.on == 'lines'
     item.filename = $'{root}/{anchor.path}'
     item.lnum = anchor.start
@@ -203,16 +451,19 @@ def Item(root: string, thread: dict<any>, current: string): dict<any>
   return item
 enddef
 
-def Show(root: string, change: dict<any>, threads: list<dict<any>>,
-    all: bool)
+# Lists THREADS of CHANGE, {} if unknown, from ROOT in a new quickfix
+# list TITLE, and shows them after their lines; resolved ones only if ALL
+def ShowThreads(root: string, title: string, change: dict<any>,
+    threads: list<dict<any>>, all: bool)
   shown = {root: root, change: change, threads: {}}
   for t in threads
     shown.threads[t.id] = t
   endfor
-  var listed = all ? threads
-    : threads->copy()->filter((_, t) => t.data.resolved != true)
-  var items = listed->mapnew((_, t) => Item(root, t, change.data.current))
-  setqflist([], ' ', {title: $'memex: {change.data.title}', items: items})
+  var current = empty(change) ? '' : change.data.current
+  var items = threads->copy()
+    ->filter((_, t) => all || t.data.resolved != true)
+    ->mapnew((_, t) => ThreadItem(root, t, current))
+  setqflist([], ' ', {title: title, items: items, context: {root: root}})
 
   marks = {}
   for item in items
@@ -221,13 +472,14 @@ def Show(root: string, change: dict<any>, threads: list<dict<any>>,
         marks[item.filename] = {}
       endif
       marks[item.filename][item.lnum] = {text: item.text,
-        id: item.user_data}
+        id: item.user_data.record.id}
     endif
   endfor
   for buf in getbufinfo({bufloaded: true})
     Mark(buf.bufnr)
   endfor
-  echo $'vim-memex: {len(items)} threads on change {change.id}'
+  echo $'vim-memex: {len(items)} threads'
+    .. (empty(change) ? '' : $' on change {change.id}')
 enddef
 
 # Shows the threads of the buffer's file after their lines
@@ -250,36 +502,24 @@ export def Mark(buf: number)
   endfor
 enddef
 
-# The thread of the quickfix entry or of the cursor's line, or {}
-def Here(): dict<any>
-  if empty(shown)
+# The thread at the cursor as Under gives it, or {} after a warning
+def Thread(): dict<any>
+  var here = Under()
+  if empty(here) || here.record.kind != 'thread'
+    Warn('no thread here; run :Memex review first')
     return {}
   endif
-  var id = ''
-  if &buftype == 'quickfix'
-    var data = get(get(getqflist(), line('.') - 1, {}), 'user_data', '')
-    # Entries of other roles keep a dict
-    id = type(data) == v:t_string ? data : ''
-  else
-    var mark = get(get(marks, expand('%:p'), {}), string(line('.')), {})
-    id = get(mark, 'id', '')
-  endif
-  return get(shown.threads, id, {})
+  return here
 enddef
 
-# Drafts the reply on stdin; the reply's earlier draft, if any, goes
-const DRAFT = '[ -z "$2" ] || memex discussion discard "$1" "$2"'
-  .. ' && memex discussion draft "$1"'
-
-# Shows the whole thread at the cursor, or of the quickfix entry, in a
-# popup that closes when the cursor leaves the line, or on <Esc> or q
-export def Thread()
-  var thread = Here()
-  if empty(thread)
-    Warn('no thread here; run :MemexThreads first')
+# Shows the whole thread at the cursor in a popup that closes when the
+# cursor leaves the line, or on <Esc> or q
+export def Popup()
+  var here = Thread()
+  if empty(here)
     return
   endif
-  var width = min([78, winwidth(0) - 4])
+  var thread = here.record
   var lines = []
   for c in thread.data.comments
     if !empty(lines)
@@ -296,7 +536,7 @@ export def Thread()
     lines += ['', '[resolved]']
   endif
   popup_atcursor(lines, {
-    maxwidth: width,
+    maxwidth: min([78, winwidth(0) - 4]),
     maxheight: &lines / 2,
     wrap: true,
     border: [],
@@ -314,14 +554,17 @@ export def Thread()
   })
 enddef
 
-export def Reply()
-  var thread = Here()
-  if empty(thread)
-    Warn('no thread here; run :MemexThreads first')
+# Drafts the reply on stdin; the reply's earlier draft, if any, goes
+const DRAFT = '[ -z "$2" ] || memex discussion discard "$1" "$2"'
+  .. ' && memex discussion draft "$1"'
+
+# Opens a reply to the thread at the cursor; :write drafts it
+def Reply()
+  var here = Thread()
+  if empty(here)
     return
   endif
-  var reply = {root: shown.root, change: shown.change.id,
-    to: thread.data.comments[-1].id, draft: ''}
+  var thread = here.record
   var last = thread.data.comments[-1]
   execute $'new memex://reply/{thread.id}'
   # Open already: keep the draft it saved
@@ -329,9 +572,10 @@ export def Reply()
     return
   endif
   setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
-  b:memex_reply = reply
+  b:memex_root = here.root
+  b:memex_reply = {change: Link(thread, 'change'), to: last.id, draft: ''}
   &l:statusline = $'memex reply to {last.author.name}: '
-    .. split(last.text, "\n")[0]
+    .. Short(last.text, 60)
   autocmd BufWriteCmd <buffer> SaveReply()
 enddef
 
@@ -344,324 +588,110 @@ def SaveReply()
   endif
   var buf = bufnr()
   var input = json_encode({reply_to: reply.to, text: text})
-  Run(reply.root, DRAFT, [reply.change, reply.draft], input,
-    (status, records) => {
-      if status == 0 && !empty(records)
-        reply.draft = records[0].data.comments[0].id
+  Spawn(b:memex_root, ['sh', '-c', DRAFT, 'sh', reply.change, reply.draft],
+    input, (status, out) => {
+      var record = Record(get(split(out, "\n"), 0, ''))
+      if status == 0 && !empty(record)
+        reply.draft = record.data.comments[0].id
         setbufvar(buf, '&modified', false)
         echo $'vim-memex: draft saved on change {reply.change}'
       endif
     })
 enddef
 
-export def Drafts()
-  if empty(shown)
-    Warn('run :MemexThreads first')
+def Publish(words: list<string>)
+  var target = Target(words)
+  if empty(target)
     return
   endif
-  var root = shown.root
-  var change = shown.change
-  Run(root, 'memex discussion drafts "$1"', [change.id], '',
-    (status, records) => {
-      if status != 0
-        return
-      endif
-      var items = records->mapnew((_, t) => Item(root, t,
-        change.data.current))
-      setqflist([], ' ', {title: $'memex drafts: {change.data.title}',
-        items: items})
-      echo $'vim-memex: {len(records)} drafts on change {change.id}'
+  var change = target.words[2]
+  Write(target.root, target.words, '{}',
+    $'Publish your drafts on change {change}?', () => {
+      echo $'vim-memex: published on change {change}'
     })
 enddef
 
-export def Publish()
-  if empty(shown)
-    Warn('run :MemexThreads first')
-    return
-  endif
-  var change = shown.change
-  var question = $'Publish your drafts on change {change.id}?'
-  if confirm(question, "&Yes\n&No", 2) != 1
-    return
-  endif
-  Run(shown.root, 'memex discussion publish "$1"', [change.id], '{}',
-    (status, _) => {
-      if status == 0
-        echo $'vim-memex: published on change {change.id}'
-      endif
+def Discard(words: list<string>)
+  var root = Root()
+  if !empty(root)
+    Write(root, words, '', $'Run memex {join(words)}?', () => {
+      echo $'vim-memex: done: memex {join(words)}'
     })
-enddef
-
-# Tracker: issues and their comments
-
-export def Issue(id: string)
-  var root: string
-  var issue = id
-  if empty(id)
-    var entry = Entry(['issue'])
-    if empty(entry)
-      Warn('no issue here; give its id or run :MemexIssues')
-      return
-    endif
-    root = entry.root
-    issue = entry.record.id
-  else
-    root = Root()
-    if empty(root)
-      return
-    endif
   endif
-  Run(root, 'memex tracker issue "$1"', [issue], '', (status, records) => {
-    if status == 0 && !empty(records)
-      Scratch($'memex://issue/{issue}', IssueLines(records[0]))
-      setlocal filetype=markdown
-    endif
-  })
 enddef
 
-def IssueLines(issue: dict<any>): list<string>
-  var data = issue.data
-  var lines = [$'# {issue.id}: {data.title}', '',
-    $'- status: {data.status}',
-    $'- assignee: {(data.assignee ?? {name: "nobody"}).name}',
-    $'- url: {data.url}', '']
-    + split(trim(data.text, "\n"), "\n", true)
-  for comment in data.comments
-    lines += ['', $'## {comment.author.name}, {comment.created}', '']
-      + split(trim(comment.text, "\n"), "\n", true)
-  endfor
-  return lines
-enddef
-
-export def Issues(query: string)
-  var root = Root()
-  if empty(root)
+# Opens a comment on the issue; :write sends it, after asking
+def Comment(words: list<string>)
+  var target = Target(words)
+  if empty(target)
     return
   endif
-  Query(root, 'memex tracker search', [], query, 'issues', query,
-    (issue) => ({text: $'{issue.id} {issue.data.status}: {issue.data.title}'}))
-enddef
-
-export def Comment(id: string)
-  var root = Root()
-  if empty(root)
-    return
-  endif
+  var id = target.words[2]
   execute $'new {fnameescape($"memex://comment/{id}")}'
   # Open already: keep the text written so far
   if exists('b:memex_comment')
     return
   endif
   setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
-  b:memex_comment = {root: root, id: id}
+  b:memex_root = target.root
+  b:memex_comment = id
   &l:statusline = $'memex comment on {id}'
   autocmd BufWriteCmd <buffer> SaveComment()
 enddef
 
 def SaveComment()
-  var comment = b:memex_comment
+  var id = b:memex_comment
   var text = join(getline(1, '$'), "\n")->trim()
   if empty(text)
     Warn('empty comment, nothing sent')
     return
   endif
-  if confirm($'Send the comment to issue {comment.id}?', "&Yes\n&No", 2) != 1
-    return
-  endif
   var buf = bufnr()
-  Run(comment.root, 'memex tracker comment "$1"', [comment.id], text,
-    (status, _) => {
-      if status == 0
-        setbufvar(buf, '&modified', false)
-        echo $'vim-memex: comment sent to issue {comment.id}'
-      endif
+  Write(b:memex_root, ['tracker', 'comment', id], text,
+    $'Send the comment to issue {id}?', () => {
+      setbufvar(buf, '&modified', false)
+      echo $'vim-memex: comment sent to issue {id}'
     })
 enddef
 
-export def Transition(id: string, ...words: list<string>)
+def Transition(words: list<string>)
+  if len(words) < 4
+    Warn('give the issue and the status to move it to')
+    return
+  endif
   var root = Root()
   if empty(root)
     return
   endif
-  if empty(words)
-    Warn('give the status to move the issue to')
-    return
-  endif
-  var status = join(words)
-  if confirm($'Move issue {id} to {status}?', "&Yes\n&No", 2) != 1
-    return
-  endif
-  Run(root, 'memex tracker transition "$1" "$2"', [id, status], '',
-    (exit, _) => {
-      if exit == 0
-        echo $'vim-memex: issue {id} moved to {status}'
-      endif
+  var id = words[2]
+  var status = join(words[3 :])
+  Write(root, ['tracker', 'transition', id, status], '',
+    $'Move issue {id} to {status}?', () => {
+      echo $'vim-memex: issue {id} moved to {status}'
     })
 enddef
 
-# CI: runs of a commit, their suites, tests and logs
-
-const FAILED = ['fail', 'timeout', 'error']
-
-# Prints the run RECORDs of COMMIT, any name git knows it by
-const RUNS = 'memex ci runs "$1"'
-
-export def Runs(commit: string)
+# The query goes on stdin, in the tracker's own language
+def Search(words: list<string>)
   var root = Root()
-  if empty(root)
-    return
+  if !empty(root)
+    Query(root, words[: 1], join(words[2 :]), join(words), false)
   endif
-  var rev = empty(commit) ? 'HEAD' : commit
-  Query(root, RUNS, [rev], '', 'runs', rev, (run) => {
-    var config = run.data.config
-    var words = [run.data.result ?? run.data.status,
-      keys(config)->sort()->mapnew((_, k) => config[k])->join('/'),
-      run.data.started ?? '']
-    return {text: words->filter((_, w) => !empty(w))->join(' ')}
-  })
 enddef
 
-export def Suites()
-  var entry = Entry(['run'])
-  if empty(entry)
-    Warn('no run here; run :MemexRuns')
+def Retest(words: list<string>)
+  var target = Target(words)
+  if empty(target)
     return
   endif
-  var id = entry.record.id
-  Query(entry.root, 'memex ci suites "$1"', [id], '', 'suites', $'run {id}',
-    (suite) => {
-      var counts = suite.data.counts
-      var text = $'{suite.data.result} {suite.data.name}'
-      if !empty(counts)
-        text ..= ' (' .. keys(counts)->sort()
-          ->mapnew((_, r) => $'{counts[r]} {r}')->join(', ') .. ')'
-      endif
-      return {text: text}
-    })
-enddef
-
-export def Tests()
-  var entry = Entry(['suite'])
-  if empty(entry)
-    Warn('no suite here; run :MemexSuites')
-    return
-  endif
-  var suite = entry.record
-  Run(entry.root, 'memex ci tests "$1"', [suite.id], '', (status, records) => {
-    if status != 0
-      return
-    endif
-    # Failures first; sort() keeps the order within each
-    var Passed = (t) => index(FAILED, t.data.result) < 0 ? 1 : 0
-    records->sort((a, b) => Passed(a) - Passed(b))
-    List(entry.root, 'tests', suite.data.name, records, (test) => {
-      var text = $'{test.data.result} {test.data.name}'
-      if !empty(test.data.error)
-        text ..= $': {test.data.error}'
-      endif
-      return {text: text}
-    })
-  })
-  echo 'vim-memex: reading tests...'
-enddef
-
-# The URL is the entry's text, for gx to open
-export def Logs()
-  var entry = Entry(['run', 'suite', 'test'])
-  if empty(entry)
-    Warn('no run, suite or test here; run :MemexRuns')
-    return
-  endif
-  var record = entry.record
-  Query(entry.root, 'memex ci logs "$1"', [record.id], '', 'logs',
-    $'{record.kind} {get(record.data, "name", record.id)}',
-    (log) => ({text: $'{log.data.name}: {log.data.url}'}))
-enddef
-
-export def Retest()
-  var entry = Entry(['run'])
-  if empty(entry)
-    Warn('no run here; run :MemexRuns')
-    return
-  endif
-  var id = entry.record.id
+  var id = target.words[2]
   var reason = input($'Why retest run {id}? ')
   if empty(reason)
     Warn('no reason given, nothing retested')
     return
   endif
-  if confirm($'Retest run {id}: {reason}?', "&Yes\n&No", 2) != 1
-    return
-  endif
-  Run(entry.root, 'memex ci retest "$1"', [id], json_encode({reason: reason}),
-    (status, _) => {
-      if status == 0
-        echo $'vim-memex: retest of run {id} asked for'
-      endif
+  Write(target.root, target.words, json_encode({reason: reason}),
+    $'Retest run {id}: {reason}?', () => {
+      echo $'vim-memex: retest of run {id} asked for'
     })
-enddef
-
-# Code: versions of a change and workspaces of the repository
-
-# Lists the versions of the change at the cursor: of the commit or the
-# review thread there, else of HEAD
-# Every version of a change, newest first, from `memex history`: the
-# change of the thread at the cursor, of the commit entry, or of HEAD
-export def History()
-  var root = Root()
-  var change = ''
-  var entry = Entry(['commit'])
-  if !empty(Here())
-    root = shown.root
-    change = shown.change.id
-  elseif !empty(entry) && !empty(entry.record.data.identity)
-    root = entry.root
-    change = entry.record.data.identity[1]
-  endif
-  if empty(root)
-    Warn('not in a git working copy')
-    return
-  endif
-  Query(root, 'memex history "$1"', [change], '', 'versions',
-    empty(change) ? 'HEAD' : change, (version) => {
-      var data = version.data
-      var text = (data.revision == null ? 'local' : $'PS{data.revision}')
-        .. $' {data.commit[: 11]}'
-      if data.current
-        text ..= ' current'
-      endif
-      var places = data.where->copy()->filter((_, w) => w != 'server')
-      if !empty(places)
-        text ..= $' [{places->join(", ")}]'
-      endif
-      return {text: text}
-    })
-enddef
-
-export def Workspaces()
-  var root = Root()
-  if empty(root)
-    return
-  endif
-  Query(root, 'memex code workspaces', [], '', 'workspaces', root,
-    (workspace) => {
-      var data = workspace.data
-      var text = $'{data.branch ?? "(detached)"} {data.head[: 11]}'
-      if data.changed == true
-        text ..= ' [changed]'
-      endif
-      return {filename: data.path, text: text}
-    })
-enddef
-
-export def Bindings()
-  var root = Root()
-  if empty(root)
-    return
-  endif
-  Spawn(root, 'memex bindings', [], '', (status, out) => {
-    if status == 0
-      Scratch('memex://bindings', split(out, "\n"))
-    endif
-  })
 enddef
