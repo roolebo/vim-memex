@@ -38,6 +38,14 @@ CI results, from the `ci` role:
     :MemexRetest             run the run of the entry again, after asking
                              why
 
+Versions and workspaces, from the `code` role:
+
+    :MemexVersions           versions of a change, and where each is: of
+                             the commit of the entry, of the change of the
+                             thread at the cursor, or of HEAD
+    :MemexWorkspaces         working copies of the repository, with what
+                             they have checked out
+
 Needs `memex` with the roles you use bound, and `jq`. When the bound
 adapter lacks a command, the command says so.
 

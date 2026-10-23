@@ -541,3 +541,65 @@ export def Retest()
       endif
     })
 enddef
+
+# Code: versions of a change and workspaces of the repository
+
+# Lists the versions of the change at the cursor: of the commit or the
+# review thread there, else of HEAD
+export def Versions()
+  var entry = Entry(['commit'])
+  if !empty(entry)
+    if empty(entry.record.data.identity)
+      Warn($'commit {entry.record.id} has no change identity')
+    else
+      ListVersions(entry.root, entry.record.data.identity[1])
+    endif
+    return
+  endif
+  if !empty(Here())
+    var ids = shown.change.links->copy()->filter((_, l) => l[0] == 'change-id')
+    if empty(ids)
+      Warn($'change {shown.change.id} has no change-id')
+    else
+      ListVersions(shown.root, ids[0][1])
+    endif
+    return
+  endif
+  var root = Root()
+  if empty(root)
+    return
+  endif
+  Run(root, 'memex code commits "$(git rev-parse HEAD)^!"', [], '',
+    (status, records) => {
+      if status != 0
+        return
+      endif
+      if empty(records) || empty(records[0].data.identity)
+        Warn('HEAD has no change identity')
+      else
+        ListVersions(root, records[0].data.identity[1])
+      endif
+    })
+enddef
+
+def ListVersions(root: string, identity: string)
+  Query(root, 'memex code versions "$1"', [identity], '', 'versions',
+    identity, (commit) => ({text: $'{commit.data.commit[: 11]} '
+      .. $'{commit.data.subject} [{commit.data.where->join(", ")}]'}))
+enddef
+
+export def Workspaces()
+  var root = Root()
+  if empty(root)
+    return
+  endif
+  Query(root, 'memex code workspaces', [], '', 'workspaces', root,
+    (workspace) => {
+      var data = workspace.data
+      var text = $'{data.branch ?? "(detached)"} {data.head[: 11]}'
+      if data.changed == true
+        text ..= ' [changed]'
+      endif
+      return {filename: data.path, text: text}
+    })
+enddef

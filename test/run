@@ -570,6 +570,64 @@ test_retest_unsupported() {
   check_lacks message "$(messages)" 'asked for'
 }
 
+# Run :MemexVersions and wait for the quickfix list
+versions() {
+  keys :MemexVersions Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex versions: I8a1f'
+}
+
+test_versions_head() {
+  editor "$REPO"
+  versions
+  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
+    "code commits $(git -C "$REPO" rev-parse HEAD)^!" \
+    'code versions I8a1f')"
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    ':0:c0ffee111111 Fix the lock [/work/project, topic]' \
+    ':0:beef33333333 Fix the lock [server]')"
+  check_has message "$(bottom_line)" 'vim-memex: 2 versions'
+}
+
+# Of the change of the thread at the cursor
+test_versions_thread() {
+  editor "$REPO" src/a.c
+  threads
+  keys 2G
+  versions
+  check calls "$(calls)" 'code versions I8a1f'
+}
+
+# Of the commit at the cursor
+test_versions_commit() {
+  editor "$REPO"
+  versions
+  keys :copen Enter 2G
+  : > "$MEMEX_FAKE/log"
+  keys :MemexVersions Enter
+  wait_for 'getqflist({"nr": "$"}).nr' 2
+  check log "$(cat "$MEMEX_FAKE/log")" 'code versions I8a1f'
+}
+
+test_versions_unsupported() {
+  editor "$REPO"
+  echo commits > "$MEMEX_FAKE/unsupported"
+  keys :MemexVersions Enter
+  wait_for 'execute("messages") =~ "not supported"' 1
+  check_has warning "$(messages)" \
+    'vim-memex: not supported by the bound adapter'
+  check log "$(cat "$MEMEX_FAKE/log")" \
+    "code commits $(git -C "$REPO" rev-parse HEAD)^!"
+}
+
+test_workspaces() {
+  editor "$REPO"
+  keys :MemexWorkspaces Enter
+  wait_for 'getqflist({"title": 1}).title' "memex workspaces: $REPO"
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    '/work/project:0:topic c0ffee111111 [changed]' \
+    '/work/project-old:0:(detached) beef33333333')"
+}
+
 # A repository with the files the threads are about
 make_repo() {
   git init -q "$REPO"
