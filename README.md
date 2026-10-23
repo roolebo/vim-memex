@@ -12,4 +12,6 @@ Review threads of a change in Vim, from [memex], and replies to them.
 
 Needs `memex` with a `discussion` binding, and `jq`.
 
+Tests run offline, in Vims of their own under tmux: `test/run [TEST...]`.
+
 [memex]: https://github.com/roolebo/memex

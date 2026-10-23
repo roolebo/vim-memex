@@ -1,0 +1,373 @@
+#!/usr/bin/env bash
+#
+# test/run: tests of vim-memex, offline.
+#
+# Each test runs its own Vim in a private tmux server, in a git
+# repository of its own. memex is test/fake-memex, which serves the
+# threads of change 1234 from test/data.
+#
+
+set -e
+
+CURDIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
+ROOT=$(dirname "$CURDIR")
+DIR=$(realpath "$(mktemp -d)")
+FAILED=0
+
+die() {
+  echo "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat << EOF
+Usage: $0 [TEST...]
+
+Runs the given tests, or all of them:
+$(declare -F | cut -d' ' -f3 | grep '^test_' | sed 's/^/  /')
+EOF
+}
+
+t() {
+  tmux -L "vim-memex-test-$$" "$@"
+}
+
+cleanup() {
+  t kill-server 2> /dev/null || true
+  rm -rf "$DIR"
+}
+
+# Start the editor in the directory WD: vim ARGS, wait until it has
+# started
+editor() {
+  local i
+  t kill-server 2> /dev/null || true
+  t new-session -d -x 120 -y 30 -c "$1" vim -n -N -u NONE -i NONE \
+    --servername "$SERVER" --cmd "set rtp^=$ROOT hidden" \
+    --cmd "source $CURDIR/helpers.vim" -c 'runtime plugin/memex.vim' \
+    "${@:2}"
+  for i in $(seq 50); do
+    [ "$(expr 'v:vim_did_enter' 2> /dev/null)" == 1 ] && return
+    sleep 0.1
+  done
+  die "Vim didn't start: $*"
+}
+
+expr() {
+  vim --servername "$SERVER" --remote-expr "$1"
+}
+
+# Type keys as the human, then give Vim time to handle them
+keys() {
+  t send-keys "$@"
+  sleep 0.3
+}
+
+# Wait until Vim's EXPR is VALUE, for memex to finish
+wait_for() {
+  local i
+  for i in $(seq 50); do
+    [ "$(expr "$1")" == "$2" ] && return
+    sleep 0.1
+  done
+}
+
+# Run :MemexThreads ARGS and wait for the quickfix list
+threads() {
+  keys ":MemexThreads$1" Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex: Fix the lock'
+}
+
+# The screen's last line
+bottom_line() {
+  t capture-pane -p | tail -1
+}
+
+messages() {
+  expr 'execute("messages")'
+}
+
+# The calls of memex, without the ones that read threads
+calls() {
+  grep -Ev '^discussion (locate|change|threads) ' "$MEMEX_FAKE/log" || true
+}
+
+check() {
+  [ "$2" == "$3" ] && return
+  echo "# $1: expected '$3', got '$2'"
+  FAILED=$((FAILED + 1))
+}
+
+check_has() {
+  [[ $2 == *"$3"* ]] && return
+  echo "# $1: '$2' lacks '$3'"
+  FAILED=$((FAILED + 1))
+}
+
+check_lacks() {
+  [[ $2 != *"$3"* ]] && return
+  echo "# $1: '$2' has '$3'"
+  FAILED=$((FAILED + 1))
+}
+
+test_threads_head() {
+  editor "$REPO"
+  threads
+  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
+    "discussion locate $(git -C "$REPO" rev-parse HEAD)" \
+    'discussion threads 1234')"
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    'src/a.c:2:Jane Reviewer: Leaks the lock. (+1)' \
+    'src/a.c:1:[base] Jane Reviewer: Was this needed?' \
+    'src/b.c:1:Bob Builder: Rename the file.' \
+    ':0:[commit message] Jane Reviewer: Say why.' \
+    ':0:[change] Bob Builder: Looks good overall.' \
+    'src/a.c:5:Bob Builder: Old remark. [patch set 1]' \
+    'src/b.c:2:[draft] Jane Reviewer: Use a macro. (+1)')"
+  check end "$(expr 'getqflist()[0].end_lnum')" 3
+  check_has message "$(bottom_line)" '7 threads on change 1234'
+}
+
+test_threads_change() {
+  editor "$REPO"
+  threads ' 1234'
+  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
+    'discussion change 1234' 'discussion threads 1234')"
+  check entries "$(expr 'len(getqflist())')" 7
+}
+
+test_threads_resolved() {
+  editor "$REPO"
+  threads '!'
+  check entries "$(expr 'len(getqflist())')" 8
+  check resolved "$(expr 'getqflist()[5].text')" \
+    'Jane Reviewer: Typo. [resolved]'
+}
+
+test_threads_not_a_working_copy() {
+  editor "$TEST_DIR"
+  keys :MemexThreads Enter
+  check_has warning "$(messages)" 'vim-memex: not in a git working copy'
+  check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
+}
+
+test_threads_error() {
+  editor "$REPO"
+  keys ':MemexThreads 99' Enter
+  wait_for 'execute("messages") =~ "No change"' 1
+  check_has warning "$(messages)" 'vim-memex: No change 99'
+  echo threads > "$MEMEX_FAKE/fail"
+  keys :MemexThreads Enter
+  wait_for 'execute("messages") =~ "threads failed"' 1
+  check_has warning "$(messages)" 'vim-memex: threads failed'
+  check quickfix "$(expr 'len(getqflist())')" 0
+}
+
+# Not after a base line nor after a resolved thread's
+test_after_lines() {
+  editor "$REPO" src/a.c
+  threads
+  check 1 "$(expr 'After("src/a.c", 1)')" ''
+  check 2 "$(expr 'After("src/a.c", 2)')" \
+    '  Jane Reviewer: Leaks the lock. (+1)'
+  check 4 "$(expr 'After("src/a.c", 4)')" ''
+  check 5 "$(expr 'After("src/a.c", 5)')" \
+    '  Bob Builder: Old remark. [patch set 1]'
+}
+
+test_after_lines_opened_later() {
+  editor "$REPO"
+  threads
+  keys ':edit src/b.c' Enter
+  check 1 "$(expr 'After("src/b.c", 1)')" '  Bob Builder: Rename the file.'
+  check 2 "$(expr 'After("src/b.c", 2)')" \
+    '  [draft] Jane Reviewer: Use a macro. (+1)'
+}
+
+# The file opened through a symbolic link to the repository
+test_after_lines_symlink() {
+  ln -s repo "$TEST_DIR/link"
+  editor "$TEST_DIR" link/src/a.c
+  threads
+  check 2 "$(expr 'After("link/src/a.c", 2)')" \
+    '  Jane Reviewer: Leaks the lock. (+1)'
+  keys 2G :MemexReply Enter
+  check buffer "$(expr 'bufname()')" memex://reply/t1
+}
+
+# The entry at the cursor in the quickfix window, not the current one
+test_reply_from_quickfix() {
+  editor "$REPO"
+  threads
+  keys :copen Enter 3G ':MemexReply' Enter
+  check buffer "$(expr 'bufname()')" memex://reply/t3
+  check status "$(expr '&l:statusline')" \
+    'memex reply to Bob Builder: Rename the file.'
+}
+
+test_reply_from_line() {
+  editor "$REPO" src/a.c
+  threads
+  keys 2G :MemexReply Enter
+  check buffer "$(expr 'bufname()')" memex://reply/t1
+  check status "$(expr '&l:statusline')" \
+    'memex reply to Bob Builder: Which path?'
+}
+
+test_reply_no_thread() {
+  editor "$REPO" src/a.c
+  threads
+  keys 3G :MemexReply Enter
+  check buffer "$(expr 'bufname()')" src/a.c
+  check_has warning "$(messages)" 'vim-memex: no thread here'
+}
+
+# The second write replaces the first draft
+test_reply_write() {
+  editor "$REPO" src/a.c
+  threads
+  keys 2G :MemexReply Enter i 'The unlock path.' Escape :w Enter
+  wait_for '&modified' 0
+  check calls "$(calls)" \
+    'discussion draft 1234 {"reply_to":"c2","text":"The unlock path."}'
+  check_has message "$(bottom_line)" 'draft saved on change 1234'
+  keys A ' Fixed.' Escape :w Enter
+  wait_for '&modified' 0
+  check calls "$(calls)" "$(printf '%s\n' \
+    'discussion draft 1234 {"reply_to":"c2","text":"The unlock path."}' \
+    'discussion discard 1234 d1' \
+    'discussion draft 1234 {"reply_to":"c2","text":"The unlock path. Fixed."}')"
+}
+
+# Opening the reply again keeps the draft in progress
+test_reply_twice() {
+  editor "$REPO" src/a.c
+  threads
+  keys 2G :MemexReply Enter i 'Sure.' Escape :w Enter
+  wait_for '&modified' 0
+  keys C-w p :MemexReply Enter A ' Done.' Escape :w Enter
+  wait_for '&modified' 0
+  check calls "$(calls)" "$(printf '%s\n' \
+    'discussion draft 1234 {"reply_to":"c2","text":"Sure."}' \
+    'discussion discard 1234 d1' \
+    'discussion draft 1234 {"reply_to":"c2","text":"Sure. Done."}')"
+}
+
+test_reply_empty() {
+  editor "$REPO" src/a.c
+  threads
+  keys 2G :MemexReply Enter :w Enter
+  check_has warning "$(messages)" 'vim-memex: empty reply, nothing drafted'
+  check calls "$(calls)" ''
+}
+
+test_reply_error() {
+  editor "$REPO" src/a.c
+  threads
+  echo draft > "$MEMEX_FAKE/fail"
+  keys 2G :MemexReply Enter i 'Sure.' Escape :w Enter
+  wait_for 'execute("messages") =~ "draft failed"' 1
+  check_has warning "$(messages)" 'vim-memex: draft failed'
+  check modified "$(expr '&modified')" 1
+}
+
+test_drafts() {
+  editor "$REPO" src/a.c
+  threads
+  keys 2G :MemexReply Enter i 'Sure.' Escape :w Enter
+  wait_for '&modified' 0
+  keys :MemexDrafts Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex drafts: Fix the lock'
+  check quickfix "$(expr 'Qf()')" ':0:[change] [draft] Me: Sure.'
+  check_has message "$(bottom_line)" '1 drafts on change 1234'
+}
+
+test_drafts_before_threads() {
+  editor "$REPO"
+  keys :MemexDrafts Enter
+  check_has warning "$(messages)" 'vim-memex: run :MemexThreads first'
+}
+
+test_publish() {
+  editor "$REPO"
+  threads
+  keys :MemexPublish Enter
+  keys y
+  sleep 0.5
+  check calls "$(calls)" 'discussion publish 1234 {}'
+  check_has message "$(bottom_line)" 'vim-memex: published on change 1234'
+}
+
+test_publish_declined() {
+  editor "$REPO"
+  threads
+  keys :MemexPublish Enter
+  keys n
+  keys :MemexPublish Enter
+  keys Enter
+  check calls "$(calls)" ''
+}
+
+test_publish_error() {
+  editor "$REPO"
+  threads
+  echo publish > "$MEMEX_FAKE/fail"
+  keys :MemexPublish Enter
+  keys y
+  wait_for 'execute("messages") =~ "publish failed"' 1
+  check_has warning "$(messages)" 'vim-memex: publish failed'
+  check_lacks message "$(messages)" 'published on'
+}
+
+# A repository with the files the threads are about
+make_repo() {
+  git init -q "$REPO"
+  mkdir "$REPO/src"
+  seq 6 > "$REPO/src/a.c"
+  seq 3 > "$REPO/src/b.c"
+  git -C "$REPO" add .
+  git -C "$REPO" commit -qm 'Fix the lock'
+}
+
+run() {
+  local failed=$FAILED
+  TEST=$1
+  TEST_DIR=$DIR/$1
+  SERVER=$TEST_DIR/vim
+  REPO=$TEST_DIR/repo
+  MEMEX_FAKE=$TEST_DIR/memex
+  mkdir -p "$MEMEX_FAKE"
+  make_repo
+  "$1"
+  t kill-server 2> /dev/null || true
+  if [ $FAILED -eq $failed ]; then
+    echo "ok $1"
+  else
+    echo "not ok $1"
+  fi
+}
+
+if [ "$1" == "-h" -o "$1" == "--help" ]; then
+  usage
+  exit 0
+fi
+command -v tmux > /dev/null || die "tmux is not installed"
+command -v jq > /dev/null || die "jq is not installed"
+vim --version | grep -q '+clientserver' || die "Vim lacks +clientserver"
+trap cleanup EXIT
+mkdir "$DIR/bin"
+ln -s "$CURDIR/fake-memex" "$DIR/bin/memex"
+export PATH=$DIR/bin:$PATH
+export MEMEX_FAKE
+# Commits in test repos don't depend on the user's git config
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
+export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
+
+TESTS=("$@")
+[ $# -gt 0 ] || TESTS=($(declare -F | cut -d' ' -f3 | grep '^test_'))
+for test in "${TESTS[@]}"; do
+  declare -F "$test" > /dev/null || die "No such test: $test"
+  run "$test"
+done
+[ $FAILED -eq 0 ] || die "$FAILED failed"

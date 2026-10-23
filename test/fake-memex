@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+# fake-memex: memex for the tests, with the discussion of change 1234.
+#
+# Serves the RECORDs in test/data. Keeps state in $MEMEX_FAKE: appends
+# each call to log, as its arguments then its stdin; keeps drafts in
+# drafts/ID.json. A command named in fail fails.
+#
+
+set -e
+
+DATA=$(dirname "$(realpath "${BASH_SOURCE[0]}")")/data
+STATE=$MEMEX_FAKE
+
+die() {
+  echo "$*" >&2
+  exit 1
+}
+
+# Only these read stdin, as adapters do
+case $2 in
+  draft | publish) IN=$(cat) ;;
+esac
+if [ -n "$IN" ]; then
+  echo "$* $(jq -cS . <<< "$IN")" >> "$STATE/log"
+else
+  echo "$*" >> "$STATE/log"
+fi
+[ "$1" == discussion ] || die "No $1 binding"
+if [ -f "$STATE/fail" ] && grep -qxF "$2" "$STATE/fail"; then
+  die "$2 failed"
+fi
+[ "$2" == locate -o "$3" == 1234 ] || die "No change $3"
+case $2 in
+  locate)
+    [ "$3" == "$(git rev-parse HEAD)" ] || die "No change at $3"
+    cat "$DATA/change.jsonl"
+    ;;
+  change) cat "$DATA/change.jsonl" ;;
+  threads) cat "$DATA/threads.jsonl" ;;
+  drafts) cat "$STATE"/drafts/*.json 2> /dev/null || true ;;
+  draft)
+    mkdir -p "$STATE/drafts"
+    ID=d$(($(cat "$STATE/drafts/count" 2> /dev/null || echo 0) + 1))
+    echo "${ID#d}" > "$STATE/drafts/count"
+    jq -c --arg id "$ID" -f "$DATA/draft.jq" <<< "$IN" |
+      tee "$STATE/drafts/$ID.json"
+    ;;
+  discard) rm "$STATE/drafts/$4.json" 2> /dev/null || die "No draft $4" ;;
+  publish) ;;
+  *) die "No command $2" ;;
+esac
