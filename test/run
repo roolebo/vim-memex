@@ -512,6 +512,19 @@ test_runs() {
   check_has message "$(bottom_line)" 'vim-memex: 2 runs'
 }
 
+# A note says memex runs, until it is done
+test_busy() {
+  editor "$REPO"
+  echo runs > "$MEMEX_FAKE/slow"
+  keys ':Memex ci runs' Enter
+  wait_for 'len(popup_list())' 1
+  check note "$(expr 'getbufline(winbufnr(popup_list()[0]), 1)[0]')" \
+    ' memex ci runs... '
+  rm "$MEMEX_FAKE/slow"
+  wait_for 'len(popup_list())' 0
+  check entries "$(expr 'len(getqflist())')" 2
+}
+
 test_runs_commit() {
   editor "$REPO"
   runs ' HEAD~0'

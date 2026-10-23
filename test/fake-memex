@@ -7,13 +7,20 @@
 # Serves the RECORDs in test/data. Keeps state in $MEMEX_FAKE: appends
 # each call to log, as its arguments then its stdin; keeps drafts in
 # drafts/ID.json. A command named in fail fails; one named in
-# unsupported exits 2, as an adapter that lacks it does.
+# unsupported exits 2, as an adapter that lacks it does; one named in
+# slow waits until slow is removed.
 #
 
 set -e
 
 DATA=$(dirname "$(realpath "${BASH_SOURCE[0]}")")/data
 STATE=$MEMEX_FAKE
+
+if [ -f "$STATE/slow" ] && grep -qxF "$2" "$STATE/slow"; then
+  while [ -f "$STATE/slow" ]; do
+    sleep 0.1
+  done
+fi
 
 die() {
   echo "$*" >&2

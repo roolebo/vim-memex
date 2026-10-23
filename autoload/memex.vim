@@ -190,15 +190,22 @@ enddef
 
 # Runs the command ARGV in ROOT, writes INPUT to it, and calls Done with
 # its exit status and its output
+highlight default link MemexBusy PmenuSel
+
 def Spawn(root: string, argv: list<string>, input: string,
     Done: func(number, string))
   # Raw: a RECORD can be longer than what Vim passes as one line. The
   # job may exit before its output is read, so wait for both.
   var job = {out: '', err: '', status: -1, closed: false}
+  # While it runs, a note at the top right says so
+  var note = popup_create($' {join(argv)}... ', {
+    line: 1, col: &columns, pos: 'topright', zindex: 300,
+    highlight: 'MemexBusy'})
   var Finish = () => {
     if !job.closed || job.status < 0
       return
     endif
+    popup_close(note)
     var err = trim(job.err)
     if job.status == 2
       Warn('not supported by the bound adapter'

@@ -8,9 +8,9 @@ change, issues, CI results and the history of a change.
     :Memex[!] ARGS
 
 Runs `memex ARGS` in the background, in the working copy of the current
-file; `memex --help` lists what ARGS can be. `<Tab>` completes memex's
-commands and roles. `tracker search QUERY` sends QUERY on stdin, as
-memex wants it.
+file, with a note at the top right until it is done; `memex --help`
+lists what ARGS can be. `<Tab>` completes memex's commands and roles.
+`tracker search QUERY` sends QUERY on stdin, as memex wants it.
 
 What memex prints shows by the kind of its records:
 
