@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# fake-memex: memex for the tests, with the discussion of change 1234.
+# fake-memex: memex for the tests, with the discussion of change 1234 and
+# the issues BUG-1 and BUG-2.
 #
 # Serves the RECORDs in test/data. Keeps state in $MEMEX_FAKE: appends
 # each call to log, as its arguments then its stdin; keeps drafts in
@@ -18,39 +19,65 @@ die() {
   exit 1
 }
 
-# Only these read stdin, as adapters do
+# Prints the RECORDs of FILE in test/data whose field PATH is VALUE
+records() {
+  jq -c --arg value "$3" "select($2 == \$value)" "$DATA/$1"
+}
+
+discussion() {
+  [ "$1" == locate -o "$2" == 1234 ] || die "No change $2"
+  case $1 in
+    locate)
+      [ "$2" == "$(git rev-parse HEAD)" ] || die "No change at $2"
+      cat "$DATA/change.jsonl"
+      ;;
+    change) cat "$DATA/change.jsonl" ;;
+    threads) cat "$DATA/threads.jsonl" ;;
+    drafts) cat "$STATE"/drafts/*.json 2> /dev/null || true ;;
+    draft)
+      mkdir -p "$STATE/drafts"
+      ID=d$(($(cat "$STATE/drafts/count" 2> /dev/null || echo 0) + 1))
+      echo "${ID#d}" > "$STATE/drafts/count"
+      jq -c --arg id "$ID" -f "$DATA/draft.jq" <<< "$IN" |
+        tee "$STATE/drafts/$ID.json"
+      ;;
+    discard)
+      rm "$STATE/drafts/$3.json" 2> /dev/null || die "No draft $3"
+      ;;
+    publish) ;;
+    *) die "No command $1" ;;
+  esac
+}
+
+tracker() {
+  case $1 in
+    issue | comment | transition)
+      ISSUE=$(records issues.jsonl .id "$2")
+      [ -n "$ISSUE" ] || die "No issue $2"
+      [ "$1" != issue ] || echo "$ISSUE"
+      ;;
+    search) cat "$DATA/issues.jsonl" ;;
+    *) die "No command $1" ;;
+  esac
+}
+
+# Only these read stdin, as adapters do: JSON, or text
 case $2 in
-  draft | publish) IN=$(cat) ;;
+  draft | publish) IN=$(jq -cS .) ;;
+  search | comment) IN=$(cat) ;;
 esac
 if [ -n "$IN" ]; then
-  echo "$* $(jq -cS . <<< "$IN")" >> "$STATE/log"
+  echo "$* $IN" >> "$STATE/log"
 else
   echo "$*" >> "$STATE/log"
 fi
-[ "$1" == discussion ] || die "No $1 binding"
 if [ -f "$STATE/fail" ] && grep -qxF "$2" "$STATE/fail"; then
   die "$2 failed"
 fi
 if [ -f "$STATE/unsupported" ] && grep -qxF "$2" "$STATE/unsupported"; then
   exit 2
 fi
-[ "$2" == locate -o "$3" == 1234 ] || die "No change $3"
-case $2 in
-  locate)
-    [ "$3" == "$(git rev-parse HEAD)" ] || die "No change at $3"
-    cat "$DATA/change.jsonl"
-    ;;
-  change) cat "$DATA/change.jsonl" ;;
-  threads) cat "$DATA/threads.jsonl" ;;
-  drafts) cat "$STATE"/drafts/*.json 2> /dev/null || true ;;
-  draft)
-    mkdir -p "$STATE/drafts"
-    ID=d$(($(cat "$STATE/drafts/count" 2> /dev/null || echo 0) + 1))
-    echo "${ID#d}" > "$STATE/drafts/count"
-    jq -c --arg id "$ID" -f "$DATA/draft.jq" <<< "$IN" |
-      tee "$STATE/drafts/$ID.json"
-    ;;
-  discard) rm "$STATE/drafts/$4.json" 2> /dev/null || die "No draft $4" ;;
-  publish) ;;
-  *) die "No command $2" ;;
+case $1 in
+  discussion | tracker) "$@" ;;
+  *) die "No $1 binding" ;;
 esac

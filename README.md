@@ -1,6 +1,13 @@
 # vim-memex
 
-Review threads of a change in Vim, from [memex], and replies to them.
+What [memex] has about your working copy, in Vim: review threads of a
+change, issues, CI results and versions of a commit.
+
+Results go to the quickfix list. Commands that act on a result take the
+quickfix entry at the cursor in the quickfix window, else the current
+one.
+
+Review threads, from the `discussion` role:
 
     :MemexThreads [CHANGE]   open threads of CHANGE, or of HEAD's change,
                              in the quickfix list and after their lines
@@ -10,7 +17,18 @@ Review threads of a change in Vim, from [memex], and replies to them.
     :MemexDrafts             your drafts in the quickfix list
     :MemexPublish            publish your drafts, after asking
 
-Needs `memex` with a `discussion` binding, and `jq`.
+Issues, from the `tracker` role:
+
+    :MemexIssue [ISSUE]      show ISSUE, or the issue of the entry
+    :MemexIssues QUERY       issues matching QUERY, in the tracker's own
+                             search language
+    :MemexComment ISSUE      write a comment on ISSUE; :write sends it,
+                             after asking
+    :MemexTransition ISSUE STATUS
+                             move ISSUE to STATUS, after asking
+
+Needs `memex` with the roles you use bound, and `jq`. When the bound
+adapter lacks a command, the command says so.
 
 Tests run offline, in Vims of their own under tmux: `test/run [TEST...]`.
 

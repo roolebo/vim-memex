@@ -222,6 +222,16 @@ test_reply_no_thread() {
   check_has warning "$(messages)" 'vim-memex: no thread here'
 }
 
+# An entry of another role, not a thread
+test_reply_issue() {
+  editor "$REPO"
+  threads
+  keys ':MemexIssues x' Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex issues: x'
+  keys :copen Enter :MemexReply Enter
+  check_has warning "$(messages)" 'vim-memex: no thread here'
+}
+
 # The second write replaces the first draft
 test_reply_write() {
   editor "$REPO" src/a.c
@@ -329,6 +339,121 @@ test_publish_error() {
   wait_for 'execute("messages") =~ "publish failed"' 1
   check_has warning "$(messages)" 'vim-memex: publish failed'
   check_lacks message "$(messages)" 'published on'
+}
+
+# Run :MemexIssue ARGS and wait for the issue's buffer, ISSUE
+issue() {
+  keys ":MemexIssue$1" Enter
+  wait_for 'bufname()' "memex://issue/$2"
+}
+
+# The current buffer's lines
+lines() {
+  expr 'join(getline(1, "$"), "\n")'
+}
+
+test_issue() {
+  editor "$REPO"
+  issue ' BUG-1' BUG-1
+  check log "$(cat "$MEMEX_FAKE/log")" 'tracker issue BUG-1'
+  check buffer "$(lines)" "$(printf '%s\n' \
+    '# BUG-1: Lock leaks on the error path' '' \
+    '- status: Open' '- assignee: Jane Reviewer' \
+    '- url: https://issues.example.org/BUG-1' '' \
+    'The write fails and the lock stays held.' '' 'Seen twice.' '' \
+    '## Bob Builder, 2026-10-20T10:00:00Z' '' 'Seen in the nightly run.' '' \
+    '## Jane Reviewer, 2026-10-21T09:00:00Z' '' 'Fix under review.')"
+  check filetype "$(expr '&filetype')" markdown
+  check modifiable "$(expr '&modifiable')" 0
+  # Again: the same window, read anew
+  keys C-w p
+  issue ' BUG-1' BUG-1
+  check windows "$(expr 'winnr("$")')" 2
+  check lines "$(expr 'line("$")')" 17
+}
+
+test_issue_error() {
+  editor "$REPO"
+  keys ':MemexIssue BUG-9' Enter
+  wait_for 'execute("messages") =~ "No issue"' 1
+  check_has warning "$(messages)" 'vim-memex: No issue BUG-9'
+  check buffer "$(expr 'bufname()')" ''
+}
+
+test_issue_no_entry() {
+  editor "$REPO"
+  keys :MemexIssue Enter
+  check_has warning "$(messages)" 'vim-memex: no issue here'
+}
+
+# The query goes on stdin; an entry opens its issue
+test_issues() {
+  editor "$REPO"
+  keys ':MemexIssues assignee = me' Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex issues: assignee = me'
+  check log "$(cat "$MEMEX_FAKE/log")" 'tracker search assignee = me'
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    ':0:BUG-1 Open: Lock leaks on the error path' \
+    ':0:BUG-2 Closed: Typo in the manual')"
+  check_has message "$(bottom_line)" 'vim-memex: 2 issues'
+  keys :copen Enter 2G :MemexIssue Enter
+  wait_for 'bufname()' memex://issue/BUG-2
+  check assignee "$(expr 'getline(4)')" '- assignee: nobody'
+}
+
+test_comment() {
+  editor "$REPO"
+  keys ':MemexComment BUG-1' Enter
+  check buffer "$(expr 'bufname()')" memex://comment/BUG-1
+  keys i 'Fixed in 1234.' Escape :w Enter
+  keys y
+  wait_for '&modified' 0
+  check log "$(cat "$MEMEX_FAKE/log")" 'tracker comment BUG-1 Fixed in 1234.'
+  check_has message "$(bottom_line)" 'comment sent to issue BUG-1'
+}
+
+test_comment_declined() {
+  editor "$REPO"
+  keys ':MemexComment BUG-1' Enter i 'Fixed.' Escape :w Enter
+  keys n
+  check modified "$(expr '&modified')" 1
+  keys :w Enter
+  keys Enter
+  check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
+}
+
+test_comment_empty() {
+  editor "$REPO"
+  keys ':MemexComment BUG-1' Enter :w Enter
+  check_has warning "$(messages)" 'vim-memex: empty comment, nothing sent'
+  check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
+}
+
+test_comment_error() {
+  editor "$REPO"
+  keys ':MemexComment BUG-9' Enter i 'Fixed.' Escape :w Enter
+  keys y
+  wait_for 'execute("messages") =~ "No issue"' 1
+  check_has warning "$(messages)" 'vim-memex: No issue BUG-9'
+  check modified "$(expr '&modified')" 1
+}
+
+test_transition() {
+  editor "$REPO"
+  keys ':MemexTransition BUG-1 In Progress' Enter
+  keys y
+  wait_for 'execute("messages") =~ "moved to"' 1
+  check log "$(cat "$MEMEX_FAKE/log")" 'tracker transition BUG-1 In Progress'
+  check_has message "$(bottom_line)" 'issue BUG-1 moved to In Progress'
+}
+
+test_transition_declined() {
+  editor "$REPO"
+  keys ':MemexTransition BUG-1 Closed' Enter
+  keys n
+  keys ':MemexTransition BUG-1' Enter
+  check_has warning "$(messages)" 'vim-memex: give the status'
+  check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
 }
 
 # A repository with the files the threads are about

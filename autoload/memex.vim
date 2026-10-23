@@ -1,6 +1,7 @@
 vim9script
-# Review threads of a change, from `memex discussion`, in the quickfix
-# list and after the lines they are about; replies to them as drafts.
+# What memex has about a working copy, in the quickfix list and in
+# buffers of their own. Review threads of a change also go after the
+# lines they are about, and get replies as drafts.
 
 const PROP = 'memex_thread'
 
@@ -15,6 +16,8 @@ def Warn(message: string)
   echohl None
 enddef
 
+# The working copy of the current file, or of the current directory;
+# warns and returns '' outside one
 def Root(): string
   var dir = expand('%:p:h')
   if !isdirectory(dir)
@@ -22,7 +25,11 @@ def Root(): string
   endif
   var git = $'git -C {shellescape(dir)}'
   var root = trim(system($'{git} rev-parse --show-toplevel'))
-  return v:shell_error == 0 ? root : ''
+  if v:shell_error != 0
+    Warn('not in a git working copy')
+    return ''
+  endif
+  return root
 enddef
 
 # Runs a shell SCRIPT with ARGS in ROOT, writes INPUT to it, and calls
@@ -72,6 +79,54 @@ def Run(root: string, script: string, args: list<string>, input: string,
   ch_close_in(channel)
 enddef
 
+# Lists RECORDs in a new quickfix list of NOUN about ABOUT, an entry each
+# from ToEntry. Each entry keeps its RECORD and ROOT, the working copy it
+# came from, for the commands that act on it.
+def List(root: string, noun: string, about: string,
+    records: list<dict<any>>, ToEntry: func(dict<any>): dict<any>)
+  var items = records->mapnew((_, r) => ToEntry(r)
+    ->extend({user_data: {root: root, record: r}}))
+  setqflist([], ' ', {title: $'memex {noun}: {about}', items: items})
+  echo $'vim-memex: {len(items)} {noun}'
+enddef
+
+# Runs SCRIPT as Run does and lists its RECORDs as List does
+def Query(root: string, script: string, args: list<string>, input: string,
+    noun: string, about: string, ToEntry: func(dict<any>): dict<any>)
+  Run(root, script, args, input, (status, records) => {
+    if status == 0
+      List(root, noun, about, records, ToEntry)
+    endif
+  })
+  echo $'vim-memex: reading {noun}...'
+enddef
+
+# The quickfix entry's RECORD and working copy, as List keeps them, if
+# the RECORD is of one of KINDS; else {}. The entry is the one at the
+# cursor in the quickfix window, else the current one.
+def Entry(kinds: list<string>): dict<any>
+  var idx = &buftype == 'quickfix' ? line('.') : getqflist({idx: 0}).idx
+  var data = get(get(getqflist(), idx - 1, {}), 'user_data', '')
+  if type(data) != v:t_dict || index(kinds, data.record.kind) < 0
+    return {}
+  endif
+  return data
+enddef
+
+# Shows LINES in the read-only buffer NAME, in its window or a new one
+def Scratch(name: string, lines: list<string>)
+  var win = bufwinid(name)
+  if win > 0
+    win_gotoid(win)
+  else
+    execute $'new {fnameescape(name)}'
+  endif
+  setlocal buftype=nofile bufhidden=wipe noswapfile modifiable
+  silent :%delete _
+  setline(1, lines)
+  setlocal nomodifiable
+enddef
+
 # Prints the change RECORD of CHANGE, or of HEAD without it, then its
 # thread RECORDs
 const THREADS = 'if [ -n "$1" ]; then c=$(memex discussion change "$1");'
@@ -82,7 +137,6 @@ const THREADS = 'if [ -n "$1" ]; then c=$(memex discussion change "$1");'
 export def Threads(all: bool, change: string)
   var root = Root()
   if empty(root)
-    Warn('not in a git working copy')
     return
   endif
   Run(root, THREADS, [change], '', (status, records) => {
@@ -187,7 +241,9 @@ def Here(): dict<any>
   endif
   var id = ''
   if &buftype == 'quickfix'
-    id = get(get(getqflist(), line('.') - 1, {}), 'user_data', '')
+    var data = get(get(getqflist(), line('.') - 1, {}), 'user_data', '')
+    # Entries of other roles keep a dict
+    id = type(data) == v:t_string ? data : ''
   else
     var mark = get(get(marks, expand('%:p'), {}), string(line('.')), {})
     id = get(mark, 'id', '')
@@ -273,6 +329,113 @@ export def Publish()
     (status, _) => {
       if status == 0
         echo $'vim-memex: published on change {change.id}'
+      endif
+    })
+enddef
+
+# Tracker: issues and their comments
+
+export def Issue(id: string)
+  var root: string
+  var issue = id
+  if empty(id)
+    var entry = Entry(['issue'])
+    if empty(entry)
+      Warn('no issue here; give its id or run :MemexIssues')
+      return
+    endif
+    root = entry.root
+    issue = entry.record.id
+  else
+    root = Root()
+    if empty(root)
+      return
+    endif
+  endif
+  Run(root, 'memex tracker issue "$1"', [issue], '', (status, records) => {
+    if status == 0 && !empty(records)
+      Scratch($'memex://issue/{issue}', IssueLines(records[0]))
+      setlocal filetype=markdown
+    endif
+  })
+enddef
+
+def IssueLines(issue: dict<any>): list<string>
+  var data = issue.data
+  var lines = [$'# {issue.id}: {data.title}', '',
+    $'- status: {data.status}',
+    $'- assignee: {(data.assignee ?? {name: "nobody"}).name}',
+    $'- url: {data.url}', '']
+    + split(trim(data.text, "\n"), "\n", true)
+  for comment in data.comments
+    lines += ['', $'## {comment.author.name}, {comment.created}', '']
+      + split(trim(comment.text, "\n"), "\n", true)
+  endfor
+  return lines
+enddef
+
+export def Issues(query: string)
+  var root = Root()
+  if empty(root)
+    return
+  endif
+  Query(root, 'memex tracker search', [], query, 'issues', query,
+    (issue) => ({text: $'{issue.id} {issue.data.status}: {issue.data.title}'}))
+enddef
+
+export def Comment(id: string)
+  var root = Root()
+  if empty(root)
+    return
+  endif
+  execute $'new {fnameescape($"memex://comment/{id}")}'
+  # Open already: keep the text written so far
+  if exists('b:memex_comment')
+    return
+  endif
+  setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
+  b:memex_comment = {root: root, id: id}
+  &l:statusline = $'memex comment on {id}'
+  autocmd BufWriteCmd <buffer> SaveComment()
+enddef
+
+def SaveComment()
+  var comment = b:memex_comment
+  var text = join(getline(1, '$'), "\n")->trim()
+  if empty(text)
+    Warn('empty comment, nothing sent')
+    return
+  endif
+  if confirm($'Send the comment to issue {comment.id}?', "&Yes\n&No", 2) != 1
+    return
+  endif
+  var buf = bufnr()
+  Run(comment.root, 'memex tracker comment "$1"', [comment.id], text,
+    (status, _) => {
+      if status == 0
+        setbufvar(buf, '&modified', false)
+        echo $'vim-memex: comment sent to issue {comment.id}'
+      endif
+    })
+enddef
+
+export def Transition(id: string, ...words: list<string>)
+  var root = Root()
+  if empty(root)
+    return
+  endif
+  if empty(words)
+    Warn('give the status to move the issue to')
+    return
+  endif
+  var status = join(words)
+  if confirm($'Move issue {id} to {status}?', "&Yes\n&No", 2) != 1
+    return
+  endif
+  Run(root, 'memex tracker transition "$1" "$2"', [id, status], '',
+    (exit, _) => {
+      if exit == 0
+        echo $'vim-memex: issue {id} moved to {status}'
       endif
     })
 enddef

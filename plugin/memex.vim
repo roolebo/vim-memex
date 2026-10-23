@@ -1,4 +1,4 @@
-" vim-memex - review threads from memex in Vim
+" vim-memex - review threads, issues, CI and versions from memex in Vim
 " Maintainer:	Roman Bolshakov <roman@subtile.systems>
 " License: MIT
 
@@ -23,6 +23,11 @@ command -bang -nargs=? MemexThreads memex.Threads(<bang>0, <q-args>)
 command MemexReply memex.Reply()
 command MemexDrafts memex.Drafts()
 command MemexPublish memex.Publish()
+
+command -nargs=? MemexIssue memex.Issue(<q-args>)
+command -nargs=1 MemexIssues memex.Issues(<q-args>)
+command -nargs=1 MemexComment memex.Comment(<q-args>)
+command -nargs=+ MemexTransition memex.Transition(<f-args>)
 
 augroup memex
   autocmd!
