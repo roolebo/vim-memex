@@ -1,0 +1,4 @@
+code memex-git https://git.example.org/project.git
+discussion memex-gerrit https://review.example.org
+tracker memex-jira https://issues.example.org
+ci memex-jenkins https://ci.example.org

@@ -628,6 +628,14 @@ test_workspaces() {
     '/work/project-old:0:(detached) beef33333333')"
 }
 
+test_bindings() {
+  editor "$REPO"
+  keys :MemexBindings Enter
+  wait_for 'bufname()' memex://bindings
+  check buffer "$(lines)" "$(cat "$CURDIR/data/bindings")"
+  check modifiable "$(expr '&modifiable')" 0
+}
+
 # A repository with the files the threads are about
 make_repo() {
   git init -q "$REPO"

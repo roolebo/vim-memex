@@ -38,6 +38,8 @@ command MemexRetest memex.Retest()
 command MemexVersions memex.Versions()
 command MemexWorkspaces memex.Workspaces()
 
+command MemexBindings memex.Bindings()
+
 augroup memex
   autocmd!
   autocmd BufWinEnter * memex.Mark(str2nr(expand('<abuf>')))

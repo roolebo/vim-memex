@@ -36,6 +36,14 @@ enddef
 # Done with its exit status and its output RECORDs
 def Run(root: string, script: string, args: list<string>, input: string,
     Done: func(number, list<dict<any>>))
+  Spawn(root, script, args, input, (status, out) => {
+    Done(status, split(out, "\n")->mapnew((_, l) => json_decode(l)))
+  })
+enddef
+
+# Runs SCRIPT as Run does, and calls Done with its output as text
+def Spawn(root: string, script: string, args: list<string>, input: string,
+    Done: func(number, string))
   # Raw: a RECORD can be longer than what Vim passes as one line. The
   # job may exit before its output is read, so wait for both.
   var job = {out: '', err: '', status: -1, closed: false}
@@ -50,7 +58,7 @@ def Run(root: string, script: string, args: list<string>, input: string,
     elseif job.status != 0
       Warn(empty(err) ? $'memex exited with {job.status}' : err)
     endif
-    Done(job.status, split(job.out, "\n")->mapnew((_, l) => json_decode(l)))
+    Done(job.status, job.out)
   }
   var j = job_start(['sh', '-c', script, 'sh'] + args, {
     cwd: root,
@@ -602,4 +610,16 @@ export def Workspaces()
       endif
       return {filename: data.path, text: text}
     })
+enddef
+
+export def Bindings()
+  var root = Root()
+  if empty(root)
+    return
+  endif
+  Spawn(root, 'memex bindings', [], '', (status, out) => {
+    if status == 0
+      Scratch('memex://bindings', split(out, "\n"))
+    endif
+  })
 enddef

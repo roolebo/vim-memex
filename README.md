@@ -46,6 +46,10 @@ Versions and workspaces, from the `code` role:
     :MemexWorkspaces         working copies of the repository, with what
                              they have checked out
 
+Bindings:
+
+    :MemexBindings           which adapter each role is bound to
+
 Needs `memex` with the roles you use bound, and `jq`. When the bound
 adapter lacks a command, the command says so.
 
