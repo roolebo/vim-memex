@@ -64,7 +64,12 @@ tracker() {
 
 ci() {
   case $1 in
-    runs) jq -c . "$DATA/runs.json" ;;
+    runs)
+      # As memex does, a COMMIT may be any revision
+      git rev-parse -q --verify "${2:-HEAD}^{commit}" > /dev/null ||
+        die "No runs of $2"
+      jq -c . "$DATA/runs.json"
+      ;;
     suites) records suites.json .data.run "$2" ;;
     tests) records tests.json .data.suite "$2" ;;
     logs) records logs.json .data.of "$2" ;;
@@ -99,6 +104,14 @@ else
 fi
 if [ "$1" == bindings ]; then
   cat "$DATA/bindings"
+  exit 0
+fi
+if [ "$1" == review ]; then
+  [ -z "$2" -o "$2" == 1234 ] || die "No change $2"
+  if [ -f "$STATE/fail" ] && grep -qxF threads "$STATE/fail"; then
+    die "threads failed"
+  fi
+  jq -c . "$DATA/change.json" "$DATA/threads.json"
   exit 0
 fi
 if [ "$1" == history ]; then

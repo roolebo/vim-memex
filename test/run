@@ -89,7 +89,8 @@ messages() {
 
 # The calls of memex, without the ones that read threads
 calls() {
-  grep -Ev '^discussion (locate|change|threads) ' "$MEMEX_FAKE/log" || true
+  grep -Ev '^(review|discussion (locate|change|threads)) ' \
+    "$MEMEX_FAKE/log" || true
 }
 
 check() {
@@ -113,9 +114,7 @@ check_lacks() {
 test_threads_head() {
   editor "$REPO"
   threads
-  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
-    "discussion locate $(git -C "$REPO" rev-parse HEAD)" \
-    'discussion threads 1234')"
+  check log "$(cat "$MEMEX_FAKE/log")" 'review '
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     'src/a.c:2:Jane Reviewer: Leaks the lock. (+1)' \
     'src/a.c:1:[base] Jane Reviewer: Was this needed?' \
@@ -131,8 +130,7 @@ test_threads_head() {
 test_threads_change() {
   editor "$REPO"
   threads ' 1234'
-  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
-    'discussion change 1234' 'discussion threads 1234')"
+  check log "$(cat "$MEMEX_FAKE/log")" 'review 1234'
   check entries "$(expr 'len(getqflist())')" 7
 }
 
@@ -466,8 +464,7 @@ runs() {
 test_runs() {
   editor "$REPO"
   runs
-  check log "$(cat "$MEMEX_FAKE/log")" \
-    "ci runs $(git -C "$REPO" rev-parse HEAD)"
+  check log "$(cat "$MEMEX_FAKE/log")" 'ci runs HEAD'
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
     ':0:fail x86_64/el9 2026-10-20T15:00:00Z' ':0:running build')"
   check_has message "$(bottom_line)" 'vim-memex: 2 runs'
@@ -475,13 +472,11 @@ test_runs() {
 
 test_runs_commit() {
   editor "$REPO"
-  runs ' HEAD'
-  check log "$(cat "$MEMEX_FAKE/log")" \
-    "ci runs $(git -C "$REPO" rev-parse HEAD)"
+  runs ' HEAD~0'
+  check log "$(cat "$MEMEX_FAKE/log")" 'ci runs HEAD~0'
   keys ':MemexRuns nothing' Enter
-  wait_for 'execute("messages") =~ "single revision"' 1
-  check_has warning "$(messages)" 'Needed a single revision'
-  check calls "$(wc -l < "$MEMEX_FAKE/log")" 1
+  wait_for 'execute("messages") =~ "No runs of"' 1
+  check_has warning "$(messages)" 'No runs of nothing'
 }
 
 # From the entry at the cursor in the quickfix window

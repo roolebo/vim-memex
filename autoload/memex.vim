@@ -137,10 +137,7 @@ enddef
 
 # Prints the change RECORD of CHANGE, or of HEAD without it, then its
 # thread RECORDs
-const THREADS = 'if [ -n "$1" ]; then c=$(memex discussion change "$1");'
-  .. ' else c=$(memex discussion locate "$(git rev-parse HEAD)"); fi'
-  .. ' || exit 1; printf "%s\n" "$c";'
-  .. ' memex discussion threads "$(printf "%s" "$c" | jq -r .id)"'
+const THREADS = 'memex review "$1"'
 
 export def Threads(all: bool, change: string)
   var root = Root()
@@ -453,7 +450,7 @@ enddef
 const FAILED = ['fail', 'timeout', 'error']
 
 # Prints the run RECORDs of COMMIT, any name git knows it by
-const RUNS = 'c=$(git rev-parse --verify "$1^{commit}") && memex ci runs "$c"'
+const RUNS = 'memex ci runs "$1"'
 
 export def Runs(commit: string)
   var root = Root()
