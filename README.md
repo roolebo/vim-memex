@@ -27,6 +27,17 @@ Issues, from the `tracker` role:
     :MemexTransition ISSUE STATUS
                              move ISSUE to STATUS, after asking
 
+CI results, from the `ci` role:
+
+    :MemexRuns [COMMIT]      runs that tested COMMIT, or HEAD
+    :MemexSuites             suites of the run of the entry
+    :MemexTests              tests of the suite of the entry, failures
+                             first
+    :MemexLogs               logs of the run, suite or test of the entry,
+                             by URL: gx on it opens it
+    :MemexRetest             run the run of the entry again, after asking
+                             why
+
 Needs `memex` with the roles you use bound, and `jq`. When the bound
 adapter lacks a command, the command says so.
 

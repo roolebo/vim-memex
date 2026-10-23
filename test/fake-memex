@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# fake-memex: memex for the tests, with the discussion of change 1234 and
-# the issues BUG-1 and BUG-2.
+# fake-memex: memex for the tests, with the discussion of change 1234,
+# the issues BUG-1 and BUG-2, and CI runs of any commit.
 #
 # Serves the RECORDs in test/data. Keeps state in $MEMEX_FAKE: appends
 # each call to log, as its arguments then its stdin; keeps drafts in
@@ -61,9 +61,22 @@ tracker() {
   esac
 }
 
+ci() {
+  case $1 in
+    runs) cat "$DATA/runs.jsonl" ;;
+    suites) records suites.jsonl .data.run "$2" ;;
+    tests) records tests.jsonl .data.suite "$2" ;;
+    logs) records logs.jsonl .data.of "$2" ;;
+    retest)
+      [ -n "$(records runs.jsonl .id "$2")" ] || die "No run $2"
+      ;;
+    *) die "No command $1" ;;
+  esac
+}
+
 # Only these read stdin, as adapters do: JSON, or text
 case $2 in
-  draft | publish) IN=$(jq -cS .) ;;
+  draft | publish | retest) IN=$(jq -cS .) ;;
   search | comment) IN=$(cat) ;;
 esac
 if [ -n "$IN" ]; then
@@ -78,6 +91,6 @@ if [ -f "$STATE/unsupported" ] && grep -qxF "$2" "$STATE/unsupported"; then
   exit 2
 fi
 case $1 in
-  discussion | tracker) "$@" ;;
+  discussion | tracker | ci) "$@" ;;
   *) die "No $1 binding" ;;
 esac

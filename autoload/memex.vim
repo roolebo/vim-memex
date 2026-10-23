@@ -439,3 +439,105 @@ export def Transition(id: string, ...words: list<string>)
       endif
     })
 enddef
+
+# CI: runs of a commit, their suites, tests and logs
+
+const FAILED = ['fail', 'timeout', 'error']
+
+# Prints the run RECORDs of COMMIT, any name git knows it by
+const RUNS = 'c=$(git rev-parse --verify "$1^{commit}") && memex ci runs "$c"'
+
+export def Runs(commit: string)
+  var root = Root()
+  if empty(root)
+    return
+  endif
+  var rev = empty(commit) ? 'HEAD' : commit
+  Query(root, RUNS, [rev], '', 'runs', rev, (run) => {
+    var config = run.data.config
+    var words = [run.data.result ?? run.data.status,
+      keys(config)->sort()->mapnew((_, k) => config[k])->join('/'),
+      run.data.started ?? '']
+    return {text: words->filter((_, w) => !empty(w))->join(' ')}
+  })
+enddef
+
+export def Suites()
+  var entry = Entry(['run'])
+  if empty(entry)
+    Warn('no run here; run :MemexRuns')
+    return
+  endif
+  var id = entry.record.id
+  Query(entry.root, 'memex ci suites "$1"', [id], '', 'suites', $'run {id}',
+    (suite) => {
+      var counts = suite.data.counts
+      var text = $'{suite.data.result} {suite.data.name}'
+      if !empty(counts)
+        text ..= ' (' .. keys(counts)->sort()
+          ->mapnew((_, r) => $'{counts[r]} {r}')->join(', ') .. ')'
+      endif
+      return {text: text}
+    })
+enddef
+
+export def Tests()
+  var entry = Entry(['suite'])
+  if empty(entry)
+    Warn('no suite here; run :MemexSuites')
+    return
+  endif
+  var suite = entry.record
+  Run(entry.root, 'memex ci tests "$1"', [suite.id], '', (status, records) => {
+    if status != 0
+      return
+    endif
+    # Failures first; sort() keeps the order within each
+    var Passed = (t) => index(FAILED, t.data.result) < 0 ? 1 : 0
+    records->sort((a, b) => Passed(a) - Passed(b))
+    List(entry.root, 'tests', suite.data.name, records, (test) => {
+      var text = $'{test.data.result} {test.data.name}'
+      if !empty(test.data.error)
+        text ..= $': {test.data.error}'
+      endif
+      return {text: text}
+    })
+  })
+  echo 'vim-memex: reading tests...'
+enddef
+
+# The URL is the entry's text, for gx to open
+export def Logs()
+  var entry = Entry(['run', 'suite', 'test'])
+  if empty(entry)
+    Warn('no run, suite or test here; run :MemexRuns')
+    return
+  endif
+  var record = entry.record
+  Query(entry.root, 'memex ci logs "$1"', [record.id], '', 'logs',
+    $'{record.kind} {get(record.data, "name", record.id)}',
+    (log) => ({text: $'{log.data.name}: {log.data.url}'}))
+enddef
+
+export def Retest()
+  var entry = Entry(['run'])
+  if empty(entry)
+    Warn('no run here; run :MemexRuns')
+    return
+  endif
+  var id = entry.record.id
+  var reason = input($'Why retest run {id}? ')
+  if empty(reason)
+    Warn('no reason given, nothing retested')
+    return
+  endif
+  if confirm($'Retest run {id}: {reason}?', "&Yes\n&No", 2) != 1
+    return
+  endif
+  Run(entry.root, 'memex ci retest "$1"', [id], json_encode({reason: reason}),
+    (status, _) => {
+      if status == 0
+        echo $'vim-memex: retest of run {id} asked for'
+      endif
+    })
+enddef

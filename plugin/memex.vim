@@ -29,6 +29,12 @@ command -nargs=1 MemexIssues memex.Issues(<q-args>)
 command -nargs=1 MemexComment memex.Comment(<q-args>)
 command -nargs=+ MemexTransition memex.Transition(<f-args>)
 
+command -nargs=? MemexRuns memex.Runs(<q-args>)
+command MemexSuites memex.Suites()
+command MemexTests memex.Tests()
+command MemexLogs memex.Logs()
+command MemexRetest memex.Retest()
+
 augroup memex
   autocmd!
   autocmd BufWinEnter * memex.Mark(str2nr(expand('<abuf>')))

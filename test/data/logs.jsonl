@@ -1,0 +1,3 @@
+{"id":"l1","source":"https://ci.example.org","role":"ci","kind":"log","basis":"l1","links":[],"data":{"of":"r1","name":"console.log","url":"https://ci.example.org/runs/r1/console.log","size":52000},"notes":{}}
+{"id":"l2","source":"https://ci.example.org","role":"ci","kind":"log","basis":"l2","links":[],"data":{"of":"s1","name":"sanity.log","url":"https://ci.example.org/suites/s1/sanity.log","size":null},"notes":{}}
+{"id":"l3","source":"https://ci.example.org","role":"ci","kind":"log","basis":"l3","links":[],"data":{"of":"t11","name":"test_51b.log","url":"https://ci.example.org/tests/t11/test_51b.log","size":null},"notes":{}}

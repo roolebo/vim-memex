@@ -456,6 +456,120 @@ test_transition_declined() {
   check log "$(cat "$MEMEX_FAKE/log" 2> /dev/null)" ''
 }
 
+# Run :MemexRuns ARGS and wait for the quickfix list
+runs() {
+  local commit=${1# }
+  keys ":MemexRuns$1" Enter
+  wait_for 'getqflist({"title": 1}).title' "memex runs: ${commit:-HEAD}"
+}
+
+test_runs() {
+  editor "$REPO"
+  runs
+  check log "$(cat "$MEMEX_FAKE/log")" \
+    "ci runs $(git -C "$REPO" rev-parse HEAD)"
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    ':0:fail x86_64/el9 2026-10-20T15:00:00Z' ':0:running build')"
+  check_has message "$(bottom_line)" 'vim-memex: 2 runs'
+}
+
+test_runs_commit() {
+  editor "$REPO"
+  runs ' HEAD'
+  check log "$(cat "$MEMEX_FAKE/log")" \
+    "ci runs $(git -C "$REPO" rev-parse HEAD)"
+  keys ':MemexRuns nothing' Enter
+  wait_for 'execute("messages") =~ "single revision"' 1
+  check_has warning "$(messages)" 'Needed a single revision'
+  check calls "$(wc -l < "$MEMEX_FAKE/log")" 1
+}
+
+# From the entry at the cursor in the quickfix window
+test_suites() {
+  editor "$REPO"
+  runs
+  keys :copen Enter :MemexSuites Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r1'
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    ':0:fail sanity (2 fail, 412 pass, 9 skip)' ':0:pass build')"
+  keys :colder Enter 2G :MemexSuites Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r2'
+  check quickfix "$(expr 'Qf()')" ''
+}
+
+test_suites_no_run() {
+  editor "$REPO"
+  keys ':MemexIssues x' Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex issues: x'
+  keys :MemexSuites Enter
+  check_has warning "$(messages)" 'vim-memex: no run here'
+}
+
+# From the current entry, failures first
+test_tests() {
+  editor "$REPO"
+  runs
+  keys :MemexSuites Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r1'
+  keys :MemexTests Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex tests: sanity'
+  check log "$(grep -v '^ci runs' "$MEMEX_FAKE/log")" \
+    "$(printf '%s\n' 'ci suites r1' 'ci tests s1')"
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    ':0:fail test_51b: dd failed: No space left on device' \
+    ':0:timeout test_60' ':0:pass test_1' ':0:skip test_52')"
+}
+
+test_logs() {
+  editor "$REPO"
+  runs
+  keys :MemexLogs Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex logs: run r1'
+  check quickfix "$(expr 'Qf()')" \
+    ':0:console.log: https://ci.example.org/runs/r1/console.log'
+  keys :colder Enter :MemexSuites Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex suites: run r1'
+  keys :MemexTests Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex tests: sanity'
+  keys :MemexLogs Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex logs: test test_51b'
+  check quickfix "$(expr 'Qf()')" \
+    ':0:test_51b.log: https://ci.example.org/tests/t11/test_51b.log'
+}
+
+test_retest() {
+  editor "$REPO"
+  runs
+  keys :MemexRetest Enter 'flaky node' Enter
+  keys y
+  wait_for 'execute("messages") =~ "retest of run"' 1
+  check log "$(grep -v '^ci runs' "$MEMEX_FAKE/log")" \
+    'ci retest r1 {"reason":"flaky node"}'
+  check_has message "$(bottom_line)" 'vim-memex: retest of run r1 asked for'
+}
+
+test_retest_declined() {
+  editor "$REPO"
+  runs
+  keys :MemexRetest Enter 'flaky node' Enter
+  keys n
+  keys :MemexRetest Enter Enter
+  check_has warning "$(messages)" 'vim-memex: no reason given'
+  check log "$(grep -v '^ci runs' "$MEMEX_FAKE/log")" ''
+}
+
+test_retest_unsupported() {
+  editor "$REPO"
+  runs
+  echo retest > "$MEMEX_FAKE/unsupported"
+  keys :MemexRetest Enter 'flaky node' Enter
+  keys y
+  wait_for 'execute("messages") =~ "not supported"' 1
+  check_has warning "$(messages)" \
+    'vim-memex: not supported by the bound adapter'
+  check_lacks message "$(messages)" 'asked for'
+}
+
 # A repository with the files the threads are about
 make_repo() {
   git init -q "$REPO"
