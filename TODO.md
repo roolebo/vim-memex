@@ -8,3 +8,15 @@
 - Empty comment text breaks the summary and the reply's status line.
 
 - `:MemexReply` on a `:MemexDrafts` entry says "no thread here".
+
+- `:MemexRetest` with several `ci` bindings: memex gives stdin only to a
+  single adapter, so the reason doesn't reach them.
+
+- `:MemexVersions` without an entry asks for the commits of `HEAD^!`,
+  which git can't parse on a root commit.
+
+- A sent comment stays in its buffer: writing it again sends it again,
+  after asking.
+
+- `:MemexTests` lists every test; a suite of thousands buries the few
+  failures under passes.
