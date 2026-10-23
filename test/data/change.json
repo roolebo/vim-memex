@@ -1,0 +1,33 @@
+{
+  "id": "1234",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "change",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ],
+    [
+      "change-id",
+      "I8a1f"
+    ]
+  ],
+  "data": {
+    "title": "Fix the lock",
+    "url": null,
+    "status": "open",
+    "owner": {
+      "name": "Me",
+      "email": null,
+      "username": "me",
+      "me": true
+    },
+    "revisions": [],
+    "current": "2",
+    "votes": [],
+    "message": "Fix the lock\n"
+  },
+  "notes": {}
+}

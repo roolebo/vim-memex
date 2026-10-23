@@ -1,4 +1,0 @@
-{"id":"t10","source":"https://ci.example.org","role":"ci","kind":"test","basis":"t10:done","links":[["commit","4a2f"]],"data":{"suite":"s1","name":"test_1","result":"pass","error":null,"duration":2,"url":null},"notes":{}}
-{"id":"t11","source":"https://ci.example.org","role":"ci","kind":"test","basis":"t11:done","links":[["commit","4a2f"],["issue","BUG-1"]],"data":{"suite":"s1","name":"test_51b","result":"fail","error":"dd failed: No space left on device","duration":41,"url":null},"notes":{}}
-{"id":"t12","source":"https://ci.example.org","role":"ci","kind":"test","basis":"t12:done","links":[["commit","4a2f"]],"data":{"suite":"s1","name":"test_52","result":"skip","error":null,"duration":null,"url":null},"notes":{}}
-{"id":"t13","source":"https://ci.example.org","role":"ci","kind":"test","basis":"t13:done","links":[["commit","4a2f"]],"data":{"suite":"s1","name":"test_60","result":"timeout","error":null,"duration":3600,"url":null},"notes":{}}

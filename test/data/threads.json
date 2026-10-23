@@ -1,0 +1,345 @@
+{
+  "id": "t1",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "lines",
+      "path": "src/a.c",
+      "side": "revision",
+      "start": 2,
+      "end": 3
+    },
+    "revision": "2",
+    "resolved": false,
+    "comments": [
+      {
+        "id": "t1",
+        "author": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Leaks the lock.\nOn the error path.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      },
+      {
+        "id": "c2",
+        "author": {
+          "name": "Bob Builder",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Which path?",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": "t1",
+        "draft": false
+      }
+    ]
+  },
+  "notes": {}
+}
+{
+  "id": "t2",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "lines",
+      "path": "src/a.c",
+      "side": "base",
+      "start": 1,
+      "end": 1
+    },
+    "revision": "2",
+    "resolved": false,
+    "comments": [
+      {
+        "id": "t2",
+        "author": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Was this needed?",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      }
+    ]
+  },
+  "notes": {}
+}
+{
+  "id": "t3",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "file",
+      "path": "src/b.c"
+    },
+    "revision": "2",
+    "resolved": false,
+    "comments": [
+      {
+        "id": "t3",
+        "author": {
+          "name": "Bob Builder",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Rename the file.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      }
+    ]
+  },
+  "notes": {}
+}
+{
+  "id": "t4",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "message"
+    },
+    "revision": "2",
+    "resolved": null,
+    "comments": [
+      {
+        "id": "t4",
+        "author": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Say why.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      }
+    ]
+  },
+  "notes": {}
+}
+{
+  "id": "t5",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "change"
+    },
+    "revision": "2",
+    "resolved": false,
+    "comments": [
+      {
+        "id": "t5",
+        "author": {
+          "name": "Bob Builder",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Looks good overall.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      }
+    ]
+  },
+  "notes": {}
+}
+{
+  "id": "t6",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "lines",
+      "path": "src/a.c",
+      "side": "revision",
+      "start": 4,
+      "end": 4
+    },
+    "revision": "2",
+    "resolved": true,
+    "comments": [
+      {
+        "id": "t6",
+        "author": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Typo.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      }
+    ]
+  },
+  "notes": {}
+}
+{
+  "id": "t7",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "1",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "lines",
+      "path": "src/a.c",
+      "side": "revision",
+      "start": 5,
+      "end": 5
+    },
+    "revision": "1",
+    "resolved": false,
+    "comments": [
+      {
+        "id": "t7",
+        "author": {
+          "name": "Bob Builder",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "1",
+        "text": "Old remark.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      }
+    ]
+  },
+  "notes": {}
+}
+{
+  "id": "t8",
+  "source": "https://review.example.org",
+  "role": "discussion",
+  "kind": "thread",
+  "basis": "2",
+  "links": [
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "anchor": {
+      "on": "lines",
+      "path": "src/b.c",
+      "side": "revision",
+      "start": 2,
+      "end": 2
+    },
+    "revision": "2",
+    "resolved": false,
+    "comments": [
+      {
+        "id": "t8",
+        "author": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "revision": "2",
+        "text": "Use a macro.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": null,
+        "draft": false
+      },
+      {
+        "id": "c9",
+        "author": {
+          "name": "Me",
+          "email": null,
+          "username": null,
+          "me": true
+        },
+        "revision": "2",
+        "text": "Done.",
+        "created": "2026-10-20T14:02:11Z",
+        "reply_to": "t8",
+        "draft": true
+      }
+    ]
+  },
+  "notes": {}
+}

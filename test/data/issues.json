@@ -1,0 +1,100 @@
+{
+  "id": "BUG-1",
+  "source": "https://issues.example.org",
+  "role": "tracker",
+  "kind": "issue",
+  "basis": "BUG-1:3",
+  "links": [
+    [
+      "issue",
+      "BUG-1"
+    ],
+    [
+      "change",
+      "1234"
+    ]
+  ],
+  "data": {
+    "title": "Lock leaks on the error path",
+    "type": "Bug",
+    "status": "Open",
+    "closed": false,
+    "priority": "Major",
+    "assignee": {
+      "name": "Jane Reviewer",
+      "email": null,
+      "username": "jane",
+      "me": false
+    },
+    "reporter": {
+      "name": "Bob Builder",
+      "email": null,
+      "username": "bob",
+      "me": false
+    },
+    "created": "2026-10-19T08:00:00Z",
+    "updated": "2026-10-21T09:00:00Z",
+    "url": "https://issues.example.org/BUG-1",
+    "text": "The write fails and the lock stays held.\n\nSeen twice.\n",
+    "comments": [
+      {
+        "id": "k1",
+        "author": {
+          "name": "Bob Builder",
+          "email": null,
+          "username": "bob",
+          "me": false
+        },
+        "text": "Seen in the nightly run.",
+        "created": "2026-10-20T10:00:00Z"
+      },
+      {
+        "id": "k2",
+        "author": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": "jane",
+          "me": false
+        },
+        "text": "Fix under review.",
+        "created": "2026-10-21T09:00:00Z"
+      }
+    ],
+    "related": []
+  },
+  "notes": {}
+}
+{
+  "id": "BUG-2",
+  "source": "https://issues.example.org",
+  "role": "tracker",
+  "kind": "issue",
+  "basis": "BUG-2:1",
+  "links": [
+    [
+      "issue",
+      "BUG-2"
+    ]
+  ],
+  "data": {
+    "title": "Typo in the manual",
+    "type": "Task",
+    "status": "Closed",
+    "closed": true,
+    "priority": null,
+    "assignee": null,
+    "reporter": {
+      "name": "Me",
+      "email": null,
+      "username": "me",
+      "me": true
+    },
+    "created": "2026-10-01T08:00:00Z",
+    "updated": "2026-10-02T08:00:00Z",
+    "url": "https://issues.example.org/BUG-2",
+    "text": "Says lokc.",
+    "comments": [],
+    "related": []
+  },
+  "notes": {}
+}

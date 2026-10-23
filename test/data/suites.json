@@ -1,0 +1,48 @@
+{
+  "id": "s1",
+  "source": "https://ci.example.org",
+  "role": "ci",
+  "kind": "suite",
+  "basis": "s1:done",
+  "links": [
+    [
+      "commit",
+      "4a2f"
+    ]
+  ],
+  "data": {
+    "run": "r1",
+    "name": "sanity",
+    "result": "fail",
+    "counts": {
+      "pass": 412,
+      "fail": 2,
+      "skip": 9
+    },
+    "duration": 3600,
+    "url": null
+  },
+  "notes": {}
+}
+{
+  "id": "s2",
+  "source": "https://ci.example.org",
+  "role": "ci",
+  "kind": "suite",
+  "basis": "s2:done",
+  "links": [
+    [
+      "commit",
+      "4a2f"
+    ]
+  ],
+  "data": {
+    "run": "r1",
+    "name": "build",
+    "result": "pass",
+    "counts": {},
+    "duration": 300,
+    "url": null
+  },
+  "notes": {}
+}
