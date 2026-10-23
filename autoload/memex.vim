@@ -184,8 +184,7 @@ def Here(): dict<any>
   endif
   var id = ''
   if &buftype == 'quickfix'
-    var list = getqflist({idx: 0, items: 0})
-    id = get(list.items[list.idx - 1], 'user_data', '')
+    id = get(get(getqflist(), line('.') - 1, {}), 'user_data', '')
   else
     var mark = get(get(marks, expand('%:p'), {}), string(line('.')), {})
     id = get(mark, 'id', '')
