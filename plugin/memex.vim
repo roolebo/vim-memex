@@ -19,7 +19,10 @@ endif
 
 import autoload 'memex.vim'
 
-command -bang MemexThreads memex.Threads(<bang>0)
+command -bang -nargs=? MemexThreads memex.Threads(<bang>0, <q-args>)
+command MemexReply memex.Reply()
+command MemexDrafts memex.Drafts()
+command MemexPublish memex.Publish()
 
 augroup memex
   autocmd!

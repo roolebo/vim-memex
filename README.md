@@ -1,10 +1,14 @@
 # vim-memex
 
-Review threads of the change at HEAD in Vim, from [memex].
+Review threads of a change in Vim, from [memex], and replies to them.
 
-    :MemexThreads     open threads in the quickfix list and after their
-                      lines
-    :MemexThreads!    resolved ones too
+    :MemexThreads [CHANGE]   open threads of CHANGE, or of HEAD's change,
+                             in the quickfix list and after their lines
+    :MemexThreads! [CHANGE]  resolved ones too
+    :MemexReply              reply to the thread at the cursor or quickfix
+                             entry; :write saves it as a draft
+    :MemexDrafts             your drafts in the quickfix list
+    :MemexPublish            publish your drafts, after asking
 
 Needs `memex` with a `discussion` binding, and `jq`.
 
