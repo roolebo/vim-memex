@@ -12,9 +12,6 @@
 - `:MemexRetest` with several `ci` bindings: memex gives stdin only to a
   single adapter, so the reason doesn't reach them.
 
-- `:MemexVersions` without an entry asks for the commits of `HEAD^!`,
-  which git can't parse on a root commit.
-
 - A sent comment stays in its buffer: writing it again sends it again,
   after asking.
 

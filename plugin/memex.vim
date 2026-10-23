@@ -1,4 +1,4 @@
-" vim-memex - review threads, issues, CI and versions from memex in Vim
+" vim-memex - review threads, issues, CI and history from memex in Vim
 " Maintainer:	Roman Bolshakov <roman@subtile.systems>
 " License: MIT
 
@@ -35,7 +35,7 @@ command MemexTests memex.Tests()
 command MemexLogs memex.Logs()
 command MemexRetest memex.Retest()
 
-command MemexVersions memex.Versions()
+command MemexHistory memex.History()
 command MemexWorkspaces memex.Workspaces()
 
 command MemexBindings memex.Bindings()

@@ -1,7 +1,7 @@
 # vim-memex
 
 What [memex] has about your working copy, in Vim: review threads of a
-change, issues, CI results and versions of a commit.
+change, issues, CI results and the history of a change.
 
 Results go to the quickfix list. Commands that act on a result take the
 quickfix entry at the cursor in the quickfix window, else the current
@@ -38,11 +38,13 @@ CI results, from the `ci` role:
     :MemexRetest             run the run of the entry again, after asking
                              why
 
-Versions and workspaces, from the `code` role:
+History and workspaces, from the `discussion` and `code` roles:
 
-    :MemexVersions           versions of a change, and where each is: of
-                             the commit of the entry, of the change of the
-                             thread at the cursor, or of HEAD
+    :MemexHistory            every version of a change, newest first: the
+                             revisions uploaded for review, then copies
+                             only in your workspaces or upstream; of the
+                             change of the thread at the cursor, of the
+                             commit of the entry, or of HEAD
     :MemexWorkspaces         working copies of the repository, with what
                              they have checked out
 

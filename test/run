@@ -570,53 +570,46 @@ test_retest_unsupported() {
   check_lacks message "$(messages)" 'asked for'
 }
 
-# Run :MemexVersions and wait for the quickfix list
-versions() {
-  keys :MemexVersions Enter
-  wait_for 'getqflist({"title": 1}).title' 'memex versions: I8a1f'
+# Run :MemexHistory and wait for the quickfix list
+history() {
+  keys :MemexHistory Enter
+  wait_for 'getqflist({"title": 1}).title' 'memex history: Fix the lock'
 }
 
-test_versions_head() {
+# Uploaded revisions newest first, then local copies; a revision also
+# found locally says where
+test_history_head() {
   editor "$REPO"
-  versions
+  history
   check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
-    "code commits $(git -C "$REPO" rev-parse HEAD)^!" \
+    "discussion locate $(git -C "$REPO" rev-parse HEAD)" \
     'code versions I8a1f')"
   check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
-    ':0:c0ffee111111 Fix the lock [/work/project, topic]' \
-    ':0:beef33333333 Fix the lock [server]')"
-  check_has message "$(bottom_line)" 'vim-memex: 2 versions'
+    ':0:PS2 beef33333333 uploaded, current' \
+    ':0:PS1 aaaa11111111 uploaded' \
+    ':0:local c0ffee111111 Fix the lock [/work/project, topic]')"
+  check_has message "$(bottom_line)" 'vim-memex: 3 versions of change 1234'
 }
 
 # Of the change of the thread at the cursor
-test_versions_thread() {
+test_history_thread() {
   editor "$REPO" src/a.c
   threads
   keys 2G
-  versions
-  check calls "$(calls)" 'code versions I8a1f'
-}
-
-# Of the commit at the cursor
-test_versions_commit() {
-  editor "$REPO"
-  versions
-  keys :copen Enter 2G
   : > "$MEMEX_FAKE/log"
-  keys :MemexVersions Enter
-  wait_for 'getqflist({"nr": "$"}).nr' 2
-  check log "$(cat "$MEMEX_FAKE/log")" 'code versions I8a1f'
+  history
+  check log "$(cat "$MEMEX_FAKE/log")" "$(printf '%s\n' \
+    'discussion change 1234' 'code versions I8a1f')"
 }
 
-test_versions_unsupported() {
+# Without the code role, the review's revisions alone
+test_history_no_code() {
   editor "$REPO"
-  echo commits > "$MEMEX_FAKE/unsupported"
-  keys :MemexVersions Enter
-  wait_for 'execute("messages") =~ "not supported"' 1
-  check_has warning "$(messages)" \
-    'vim-memex: not supported by the bound adapter'
-  check log "$(cat "$MEMEX_FAKE/log")" \
-    "code commits $(git -C "$REPO" rev-parse HEAD)^!"
+  echo versions > "$MEMEX_FAKE/unsupported"
+  history
+  check quickfix "$(expr 'Qf()')" "$(printf '%s\n' \
+    ':0:PS2 beef33333333 uploaded, current' \
+    ':0:PS1 aaaa11111111 uploaded')"
 }
 
 test_workspaces() {

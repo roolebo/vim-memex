@@ -24,7 +24,34 @@
       "username": "me",
       "me": true
     },
-    "revisions": [],
+    "revisions": [
+      {
+        "id": "1",
+        "commit": "aaaa111111112222",
+        "parents": [],
+        "fetch": "refs/changes/34/1234/1",
+        "uploader": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "created": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "2",
+        "commit": "beef333333334444",
+        "parents": [],
+        "fetch": "refs/changes/34/1234/2",
+        "uploader": {
+          "name": "Jane Reviewer",
+          "email": null,
+          "username": null,
+          "me": false
+        },
+        "created": "2026-01-02T00:00:00Z"
+      }
+    ],
     "current": "2",
     "votes": [],
     "message": "Fix the lock\n"
