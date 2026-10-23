@@ -36,8 +36,11 @@ def Run(root: string, script: string, args: list<string>, input: string,
     if !job.closed || job.status < 0
       return
     endif
-    if job.status != 0
-      var err = trim(job.err)
+    var err = trim(job.err)
+    if job.status == 2
+      Warn('not supported by the bound adapter'
+        .. (empty(err) ? '' : $': {err}'))
+    elseif job.status != 0
       Warn(empty(err) ? $'memex exited with {job.status}' : err)
     endif
     Done(job.status, split(job.out, "\n")->mapnew((_, l) => json_decode(l)))

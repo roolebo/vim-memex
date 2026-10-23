@@ -288,6 +288,18 @@ test_drafts_before_threads() {
   check_has warning "$(messages)" 'vim-memex: run :MemexThreads first'
 }
 
+test_drafts_unsupported() {
+  editor "$REPO"
+  threads
+  echo drafts > "$MEMEX_FAKE/unsupported"
+  keys :MemexDrafts Enter
+  wait_for 'execute("messages") =~ "not supported"' 1
+  check_has warning "$(messages)" \
+    'vim-memex: not supported by the bound adapter'
+  check quickfix "$(expr 'getqflist({"title": 1}).title')" \
+    'memex: Fix the lock'
+}
+
 test_publish() {
   editor "$REPO"
   threads

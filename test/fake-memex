@@ -4,7 +4,8 @@
 #
 # Serves the RECORDs in test/data. Keeps state in $MEMEX_FAKE: appends
 # each call to log, as its arguments then its stdin; keeps drafts in
-# drafts/ID.json. A command named in fail fails.
+# drafts/ID.json. A command named in fail fails; one named in
+# unsupported exits 2, as an adapter that lacks it does.
 #
 
 set -e
@@ -29,6 +30,9 @@ fi
 [ "$1" == discussion ] || die "No $1 binding"
 if [ -f "$STATE/fail" ] && grep -qxF "$2" "$STATE/fail"; then
   die "$2 failed"
+fi
+if [ -f "$STATE/unsupported" ] && grep -qxF "$2" "$STATE/unsupported"; then
+  exit 2
 fi
 [ "$2" == locate -o "$3" == 1234 ] || die "No change $3"
 case $2 in
