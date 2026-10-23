@@ -272,7 +272,7 @@ const DRAFT = '[ -z "$2" ] || memex discussion discard "$1" "$2"'
   .. ' && memex discussion draft "$1"'
 
 # Shows the whole thread at the cursor, or of the quickfix entry, in a
-# popup that closes when the cursor moves
+# popup that closes when the cursor leaves the line, or on <Esc> or q
 export def Thread()
   var thread = Here()
   if empty(thread)
@@ -301,8 +301,16 @@ export def Thread()
     wrap: true,
     border: [],
     padding: [0, 1, 0, 1],
-    moved: 'any',
+    # Open while the cursor moves along the line, to read it
+    moved: [line('.'), 1, v:maxcol],
     scrollbar: true,
+    filter: (id, key) => {
+      if key != "\<Esc>" && key != 'q'
+        return false
+      endif
+      popup_close(id)
+      return true
+    },
   })
 enddef
 

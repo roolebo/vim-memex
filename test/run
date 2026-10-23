@@ -193,6 +193,23 @@ test_after_lines_symlink() {
   check buffer "$(expr 'bufname()')" memex://reply/t1
 }
 
+# The popup stays open after the command, until q or leaving the line
+test_thread_popup() {
+  editor "$REPO"
+  threads
+  keys :copen Enter :MemexThread Enter
+  sleep 0.3
+  check open "$(expr 'len(popup_list())')" 1
+  check text "$(expr 'getbufline(winbufnr(popup_list()[0]), 1, 2)')" \
+    "$(printf '%s\n' 'Jane Reviewer, patch set 2:' '  Leaks the lock.')"
+  keys w
+  check 'open after w' "$(expr 'len(popup_list())')" 1
+  keys q
+  check 'closed by q' "$(expr 'len(popup_list())')" 0
+  keys :MemexThread Enter j
+  check 'closed by j' "$(expr 'len(popup_list())')" 0
+}
+
 # The entry at the cursor in the quickfix window, not the current one
 test_reply_from_quickfix() {
   editor "$REPO"
